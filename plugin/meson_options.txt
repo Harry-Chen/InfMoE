@@ -1,0 +1,2 @@
+option('WITH_TENSORRT', type: 'string', value: '/usr')
+option('WITH_CUDNN', type: 'string', value: '/usr')
