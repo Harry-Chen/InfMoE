@@ -1,7 +1,8 @@
-#include <stdio.h>
-#include <cublas.h>
 #include "MoELayerPlugin.h"
 
-MoELayerPlugin::MoELayerPlugin() {
-    printf("Hello World\n");
-}
+#include <cublas.h>
+#include <stdio.h>
+
+REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
+
+MoELayerPlugin::MoELayerPlugin() { printf("Hello World\n"); }

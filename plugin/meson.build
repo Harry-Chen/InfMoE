@@ -1,5 +1,5 @@
 project(
-    'moe-infer-plugin', 'cpp', 'cuda',
+    'moe-infer-plugin', 'cpp',
     version: '0.1',
     meson_version: '>=0.50.0',
     default_options : [
