@@ -6,7 +6,7 @@
 #include <cuda_runtime.h>
 #include <cublas.h>
 
-#define unimplemented(...) do { fprintf(stderr, "not implemented\n"); assert(false); } while (false);
+#define unimplemented(...) do { fprintf(stderr, "not implemented\n"); assert(false); __builtin_unreachable(); } while (false);
 
 #define CUDA_SAFE_CALL(call) { \
     auto err = (call); \

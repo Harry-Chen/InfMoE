@@ -29,7 +29,7 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hidde
 }
 
 MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
-    : MoELayerPlugin(strdup(mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU, strdup(mExpertWeightFile)) {
+    : MoELayerPlugin(strdup(src.mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU, strdup(src.mExpertWeightFile)) {
     // copy centroids
     auto size = mExpertCentroidsCPU.count * sizeof(float);
     float* cpu_centroids = static_cast<float*>(malloc(size));
@@ -72,6 +72,7 @@ void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs
                                          int32_t maxBatchSize) noexcept {
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
     // outputDims[0] should equal inputDims[0]
+    assert(outputDims[0].nbDims == inputDims[0].nbDims);
     auto& dim = inputDims[0];
     // check and set dimensions: should be token * embedding
     assert(dim.nbDims == 2);
@@ -105,7 +106,14 @@ size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
 
 int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
                                 cudaStream_t stream) noexcept {
-    // TODO: run the actual MoE calculation
+    // run the actual MoE calculation
+    // 1. calculate token-expert routing
+    // 2. get top-1 choice
+    // 3. sort & gather (a.k.a. shuffle) tokens for each export
+    // 4. run each expert
+    //    state = state + dense_relu_dense(layer_norm(state))
+    //    dense_relu_dense: hs = wo * (gelu(wi_0 * hs) * (wi_1 * hs))
+    // 5. unshuffle results
     unimplemented();
 }
 

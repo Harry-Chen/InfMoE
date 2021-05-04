@@ -45,7 +45,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     Weights expert_centroids;
     char *weight_file = nullptr;
 
-    // parse from fc
+    // parse parameters from fc
     for (int i = 0; i < fc->nbFields; ++i) {
         auto &field = fc->fields[i];
         auto name = field.name;
@@ -66,7 +66,8 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
             assert(field.length == 1 && field.data != nullptr);
             weight_file = strdup(static_cast<const char *>(field.data));
         } else {
-            assert(("unknown field", false));
+            fprintf(stderr, "unknown field name in PluginFieldCollection: %s\n", name);
+            assert(false);
         }
     }
 
