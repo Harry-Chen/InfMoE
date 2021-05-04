@@ -6,6 +6,15 @@
 #include "utility.h"
 
 
+void MoELayerPlugin::initializeGPUCentroids() {
+    auto size = mExpertCentroidsCPU.count * sizeof(float);
+    float* gpu_centroids;
+    CUDA_SAFE_CALL(cudaMalloc(&gpu_centroids, size));
+    CUDA_SAFE_CALL(cudaMemcpy(gpu_centroids, mExpertCentroidsCPU.values, size, cudaMemcpyHostToDevice));
+    mExpertCentroidsGPU = mExpertCentroidsCPU;
+    mExpertCentroidsGPU.values = gpu_centroids;
+}
+
 MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU,
                                const char* expertWeightFile)
     : mLayerName(strdup(layerName)),
@@ -17,19 +26,33 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hidde
     assert(mExpertCentroidsCPU.type == DataType::kFLOAT);
     assert(mExpertCentroidsCPU.values != nullptr);
     assert(mExpertCentroidsCPU.count > 0);
-
-    // copy expert centroids to GPU
-    auto size = mExpertCentroidsCPU.count * sizeof(float);
-    float* gpu_centroids;
-    CUDA_SAFE_CALL(cudaMalloc(&gpu_centroids, size));
-    CUDA_SAFE_CALL(cudaMemcpy(gpu_centroids, mExpertCentroidsCPU.values, size, cudaMemcpyHostToDevice));
-    mExpertCentroidsGPU = mExpertCentroidsCPU;
-    mExpertCentroidsGPU.values = gpu_centroids;
 }
 
-MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& rhs) { unimplemented(); }
+MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
+    : MoELayerPlugin(strdup(mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU, strdup(mExpertWeightFile)) {
+    // copy centroids
+    auto size = mExpertCentroidsCPU.count * sizeof(float);
+    float* cpu_centroids = static_cast<float*>(malloc(size));
+    memcpy(cpu_centroids, src.mExpertCentroidsCPU.values, size);
+    mExpertCentroidsCPU.values = cpu_centroids;
+    initializeGPUCentroids();
+}
 
-MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength) { unimplemented(); }
+MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength): mLayerName(strdup(layerName)) {
+    assert(serialLength >= METADATA_LENGTH);
+    auto int_buffer = reinterpret_cast<const int *>(serialData);
+    mExpertCount = *int_buffer++;
+    mHiddenSize = *int_buffer;
+    auto int64_buffer = reinterpret_cast<const int64_t *>(int_buffer);
+    // initialize centroids
+    mExpertCentroidsCPU.count = *int64_buffer++;
+    auto size = mExpertCentroidsCPU.count * sizeof(float);\
+    assert(size == serialLength - METADATA_LENGTH);
+    float* cpu_centroids = static_cast<float*>(malloc(size));
+    memcpy(cpu_centroids, int64_buffer, mExpertCentroidsCPU.count * sizeof(float));
+    mExpertCentroidsCPU.values = cpu_centroids;
+    initializeGPUCentroids();
+}
 
 MoELayerPlugin::~MoELayerPlugin() { terminate(); }
 
@@ -45,7 +68,8 @@ bool MoELayerPlugin::supportsFormat(DataType type, PluginFormat format) const no
 }
 
 void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs, const Dims* outputDims,
-                                         int32_t nbOutputs, DataType type, PluginFormat format, int32_t maxBatchSize) noexcept {
+                                         int32_t nbOutputs, DataType type, PluginFormat format,
+                                         int32_t maxBatchSize) noexcept {
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
     // outputDims[0] should equal inputDims[0]
     auto& dim = inputDims[0];
@@ -86,13 +110,16 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, vo
 }
 
 size_t MoELayerPlugin::getSerializationSize() const noexcept {
-    // TODO: calculate the serialization size
-    unimplemented();
+    return METADATA_LENGTH + mExpertCentroidsCPU.count * sizeof(float);
 }
 
 void MoELayerPlugin::serialize(void* buffer) const noexcept {
-    // TODO: serialize all contents
-    unimplemented();
+    auto int_buffer = reinterpret_cast<int *>(buffer);
+    *int_buffer++ = mExpertCount;
+    *int_buffer++ = mHiddenSize;
+    auto int64_buffer = reinterpret_cast<int64_t *>(int_buffer);
+    *int64_buffer++ = mExpertCentroidsCPU.count;
+    memcpy(int64_buffer, mExpertCentroidsCPU.values, mExpertCentroidsCPU.count * sizeof(float));
 }
 
 void MoELayerPlugin::destroy() noexcept { delete this; }

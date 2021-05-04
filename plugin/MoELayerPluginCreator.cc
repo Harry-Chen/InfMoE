@@ -58,7 +58,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
         } else if (strcmp(name, FIELD_EXPERT_CENTROIDS) == 0) {
             assert(field.length > 0 && field.data != nullptr);
             auto centroids = static_cast<float *>(malloc(sizeof(float) * field.length));
-            memccpy(centroids, field.data, field.length, sizeof(float));
+            memcpy(centroids, field.data, field.length * sizeof(float));
             expert_centroids.type = DataType::kFLOAT;
             expert_centroids.count = field.length;
             expert_centroids.values = centroids;

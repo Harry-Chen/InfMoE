@@ -21,7 +21,7 @@ class MoELayerPlugin : public IPluginV2 {
     // TensorRT / CUDA related
     const char *mLayerName = nullptr;
     const char *mPluginNamespace = nullptr;
-    int mMaxBatchSize;
+    int mMaxBatchSize = -1;
     cublasHandle_t mCublasHandle = nullptr;
     // layer parameters
     int mExpertCount;
@@ -31,12 +31,14 @@ class MoELayerPlugin : public IPluginV2 {
     // inferred from network
     int mEmbeddingSize = -1;
     int mSequenceLength = -1;
+    void initializeGPUCentroids();
+    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mExpertCentroidsCPU.count);
 
    public:
     // constructor for MoELayerPluginCreator
     explicit MoELayerPlugin(const char *layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU, const char *expertWeightFile);
     // constructor for clone
-    explicit MoELayerPlugin(const MoELayerPlugin &rhs);
+    explicit MoELayerPlugin(const MoELayerPlugin &src);
     // constructor for deserialization
     explicit MoELayerPlugin(const char *layerName, const void* serialData, size_t serialLength);
     // destructor
