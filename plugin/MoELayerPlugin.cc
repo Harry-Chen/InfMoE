@@ -3,6 +3,102 @@
 #include <cublas.h>
 #include <stdio.h>
 
-REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
+#include "utility.h"
 
-MoELayerPlugin::MoELayerPlugin() { printf("Hello World\n"); }
+
+MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU,
+                               const char* expertWeightFile)
+    : mLayerName(strdup(layerName)),
+      mExpertCount(expertCount),
+      mHiddenSize(hiddenSize),
+      mExpertCentroidsCPU(expertCentroidsCPU),
+      mExpertWeightFile(expertWeightFile) {
+    // check parameters
+    assert(mExpertCentroidsCPU.type == DataType::kFLOAT);
+    assert(mExpertCentroidsCPU.values != nullptr);
+    assert(mExpertCentroidsCPU.count > 0);
+
+    // copy expert centroids to GPU
+    auto size = mExpertCentroidsCPU.count * sizeof(float);
+    float* gpu_centroids;
+    CUDA_SAFE_CALL(cudaMalloc(&gpu_centroids, size));
+    CUDA_SAFE_CALL(cudaMemcpy(gpu_centroids, mExpertCentroidsCPU.values, size, cudaMemcpyHostToDevice));
+    mExpertCentroidsGPU = mExpertCentroidsCPU;
+    mExpertCentroidsGPU.values = gpu_centroids;
+}
+
+MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& rhs) { unimplemented(); }
+
+MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength) { unimplemented(); }
+
+MoELayerPlugin::~MoELayerPlugin() { terminate(); }
+
+Dims MoELayerPlugin::getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) noexcept {
+    assert(index == 0);
+    assert(nbInputDims == 0);
+    // output tensor should have the same shape with input tensor
+    return inputs[0];
+}
+
+bool MoELayerPlugin::supportsFormat(DataType type, PluginFormat format) const noexcept {
+    return type == DataType::kFLOAT && format == PluginFormat::kLINEAR;
+}
+
+void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs, const Dims* outputDims,
+                                         int32_t nbOutputs, DataType type, PluginFormat format, int32_t maxBatchSize) noexcept {
+    assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
+    // outputDims[0] should equal inputDims[0]
+    auto& dim = inputDims[0];
+    // check and set dimensions: should be token * embedding
+    assert(dim.nbDims == 2);
+    mEmbeddingSize = dim.d[0];
+    mSequenceLength = dim.d[1];
+    mMaxBatchSize = maxBatchSize;
+}
+
+int32_t MoELayerPlugin::initialize() noexcept {
+    // initialize cublas
+    CUBLAS_SAFE_CALL(cublasCreate_v2(&mCublasHandle));
+    assert(mCublasHandle != nullptr);
+    return 0;
+}
+
+void MoELayerPlugin::terminate() noexcept {
+    // free centroids on CPU and GPU
+    free(const_cast<void*>(mExpertCentroidsCPU.values));
+    CUDA_SAFE_CALL(cudaFree(const_cast<void*>(mExpertCentroidsGPU.values)));
+    mExpertCentroidsGPU.values = nullptr;
+    mExpertCentroidsCPU.values = nullptr;
+    // destroy cublas handle
+    CUBLAS_SAFE_CALL(cublasDestroy_v2(mCublasHandle));
+    mCublasHandle = nullptr;
+}
+
+size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
+    // TODO: calculate workspace size needed
+    unimplemented();
+}
+
+int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
+                                cudaStream_t stream) noexcept {
+    // TODO: run the actual MoE calculation
+    unimplemented();
+}
+
+size_t MoELayerPlugin::getSerializationSize() const noexcept {
+    // TODO: calculate the serialization size
+    unimplemented();
+}
+
+void MoELayerPlugin::serialize(void* buffer) const noexcept {
+    // TODO: serialize all contents
+    unimplemented();
+}
+
+void MoELayerPlugin::destroy() noexcept { delete this; }
+
+IPluginV2* MoELayerPlugin::clone() const noexcept { return new MoELayerPlugin(*this); }
+
+void MoELayerPlugin::setPluginNamespace(const char* pluginNamespace) noexcept { mPluginNamespace = pluginNamespace; }
+
+const char* MoELayerPlugin::getPluginNamespace() const noexcept { return mPluginNamespace; }
