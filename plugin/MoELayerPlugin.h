@@ -7,6 +7,8 @@
 #include <NvInferPlugin.h>
 #include <cublas.h>
 
+#include "SubLayer.h"
+
 using namespace nvinfer1;
 
 // plugin specific constants
@@ -23,14 +25,15 @@ class MoELayerPlugin : public IPluginV2 {
     const char *mPluginNamespace = nullptr;
     int mMaxBatchSize = -1;
     cublasHandle_t mCublasHandle = nullptr;
+
     // layer parameters
     int mExpertCount;
     int mHiddenSize;
     Weights mExpertCentroidsCPU, mExpertCentroidsGPU;
     const char *mExpertWeightFile;
+    MoESubLayer *mSublayer;
+    
     // inferred from network
-    int mEmbeddingSize = -1;
-    int mSequenceLength = -1;
     void initializeGPUCentroids();
     constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mExpertCentroidsCPU.count);
 

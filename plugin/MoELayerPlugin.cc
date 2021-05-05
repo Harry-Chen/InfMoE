@@ -4,7 +4,7 @@
 #include <stdio.h>
 
 #include "utility.h"
-
+#include "sublayers/T5FFLayer.h"
 
 void MoELayerPlugin::initializeGPUCentroids() {
     auto size = mExpertCentroidsCPU.count * sizeof(float);
@@ -52,6 +52,9 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
     memcpy(cpu_centroids, int64_buffer, mExpertCentroidsCPU.count * sizeof(float));
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
+    // initialize sublayer
+    // TODO: read from config
+    mSublayer = new T5FFLayer;
 }
 
 MoELayerPlugin::~MoELayerPlugin() { terminate(); }
@@ -71,13 +74,7 @@ void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs
                                          int32_t nbOutputs, DataType type, PluginFormat format,
                                          int32_t maxBatchSize) noexcept {
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
-    // outputDims[0] should equal inputDims[0]
-    assert(outputDims[0].nbDims == inputDims[0].nbDims);
-    auto& dim = inputDims[0];
-    // check and set dimensions: should be token * embedding
-    assert(dim.nbDims == 2);
-    mEmbeddingSize = dim.d[0];
-    mSequenceLength = dim.d[1];
+    assert(mSublayer->init(inputDims, nbInputs, outputDims, nbOutputs));
     mMaxBatchSize = maxBatchSize;
 }
 
@@ -85,6 +82,7 @@ int32_t MoELayerPlugin::initialize() noexcept {
     // initialize cublas
     CUBLAS_SAFE_CALL(cublasCreate_v2(&mCublasHandle));
     assert(mCublasHandle != nullptr);
+    // TODO: read weights from file
     return 0;
 }
 

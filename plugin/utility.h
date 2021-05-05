@@ -1,5 +1,7 @@
-#ifndef __UTILITY_H__
-#define __UTILITY_H__
+#pragma once
+
+#ifndef UTILITY_H
+#define UTILITY_H
 
 #include <cstdio>
 #include <cassert>
@@ -42,4 +44,4 @@ inline const char* cuBlasGetErrorString(cublasStatus_t err) {
     } \
 }
 
-#endif // __UTILITY_H__
+#endif // UTILITY_H
