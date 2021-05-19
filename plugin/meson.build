@@ -20,8 +20,10 @@ tensorrt_prefix = get_option('WITH_TENSORRT')
 cuda_dep = dependency('cuda', version : '>=10', modules : ['cublas'])
 cudnn_lib = cxx.find_library('cudnn', dirs: [cudnn_prefix / 'lib64'])
 nvinfer_lib = cxx.find_library('nvinfer', dirs: [tensorrt_prefix / 'lib'])
+zlib = cxx.find_library('z')
 cudnn_dep = declare_dependency(dependencies: cudnn_lib)
 nvinfer_dep = declare_dependency(dependencies: nvinfer_lib)
+zlib_dep = declare_dependency(dependencies: zlib)
 
 # TensorRT headers
 external_inc = include_directories(
@@ -32,7 +34,9 @@ external_inc = include_directories(
 # sources
 plugin_sources = [
     'MoELayerPlugin.cc',
-    'MoELayerPluginCreator.cc'
+    'MoELayerPluginCreator.cc',
+    'sublayers/T5FFLayer.cc',
+    'thirdparty/cnpy/cnpy.cpp'
 ]
 
 # build library
@@ -40,5 +44,5 @@ shared_library(
     'moelayer',
     plugin_sources,
     include_directories: external_inc,
-    dependencies: [cuda_dep, cudnn_dep, nvinfer_dep]
+    dependencies: [cuda_dep, cudnn_dep, nvinfer_dep, zlib_dep]
 )

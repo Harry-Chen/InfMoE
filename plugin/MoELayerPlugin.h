@@ -25,15 +25,20 @@ class MoELayerPlugin : public IPluginV2 {
     const char *mPluginNamespace = nullptr;
     int mMaxBatchSize = -1;
     cublasHandle_t mCublasHandle = nullptr;
+    cudaStream_t *mStreams;
 
     // layer parameters
     int mExpertCount;
     int mHiddenSize;
+    int mMaxConcurrency = 2; // maximum number of sublayers on GPU memory
     Weights mExpertCentroidsCPU, mExpertCentroidsGPU;
     const char *mExpertWeightFile;
     MoESubLayer *mSublayer;
+    mutable size_t mSublayerWorkspacecSize;
     
     // inferred from network
+    int mEmbeddingSize = -1;
+    int mSequenceLength = -1;
     void initializeGPUCentroids();
     constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mExpertCentroidsCPU.count);
 

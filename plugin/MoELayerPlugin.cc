@@ -32,7 +32,7 @@ MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
     : MoELayerPlugin(strdup(src.mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU, strdup(src.mExpertWeightFile)) {
     // copy centroids
     auto size = mExpertCentroidsCPU.count * sizeof(float);
-    float* cpu_centroids = static_cast<float*>(malloc(size));
+    float* cpu_centroids = new float[size];
     memcpy(cpu_centroids, src.mExpertCentroidsCPU.values, size);
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
@@ -48,22 +48,19 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
     mExpertCentroidsCPU.count = *int64_buffer++;
     auto size = mExpertCentroidsCPU.count * sizeof(float);\
     assert(size == serialLength - METADATA_LENGTH);
-    float* cpu_centroids = static_cast<float*>(malloc(size));
+    float* cpu_centroids = new float[size];
     memcpy(cpu_centroids, int64_buffer, mExpertCentroidsCPU.count * sizeof(float));
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
     // initialize sublayer
-    // TODO: read from config
-    mSublayer = new T5FFLayer;
+    // TODO: read specific layer from config
+    mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
 }
 
 MoELayerPlugin::~MoELayerPlugin() { terminate(); }
 
 Dims MoELayerPlugin::getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) noexcept {
-    assert(index == 0);
-    assert(nbInputDims == 0);
-    // output tensor should have the same shape with input tensor
-    return inputs[0];
+    return mSublayer->getOutputDimensions(index, inputs, nbInputDims);
 }
 
 bool MoELayerPlugin::supportsFormat(DataType type, PluginFormat format) const noexcept {
@@ -75,42 +72,78 @@ void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs
                                          int32_t maxBatchSize) noexcept {
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
     assert(mSublayer->init(inputDims, nbInputs, outputDims, nbOutputs));
+    auto &dim = inputDims[0];
+    auto &dim2 = outputDims[0];
+    mEmbeddingSize = dim.d[1];
+    mSequenceLength = dim.d[0];
     mMaxBatchSize = maxBatchSize;
 }
 
 int32_t MoELayerPlugin::initialize() noexcept {
-    // initialize cublas
     CUBLAS_SAFE_CALL(cublasCreate_v2(&mCublasHandle));
+    mStreams = new cudaStream_t[mMaxConcurrency];
+    for (int i = 0; i < mMaxConcurrency; ++i) {
+        CUDA_SAFE_CALL(cudaStreamCreate(&mStreams[i]));
+    }
     assert(mCublasHandle != nullptr);
-    // TODO: read weights from file
+    mSublayer->initialize();
     return 0;
 }
 
 void MoELayerPlugin::terminate() noexcept {
     // free centroids on CPU and GPU
-    free(const_cast<void*>(mExpertCentroidsCPU.values));
+    delete[] mExpertCentroidsCPU.values;
     CUDA_SAFE_CALL(cudaFree(const_cast<void*>(mExpertCentroidsGPU.values)));
     mExpertCentroidsGPU.values = nullptr;
     mExpertCentroidsCPU.values = nullptr;
     // destroy cublas handle
     CUBLAS_SAFE_CALL(cublasDestroy_v2(mCublasHandle));
     mCublasHandle = nullptr;
+    // destroy cuda streams
+    for (int i = 0; i < mMaxConcurrency; ++i) {
+        CUDA_SAFE_CALL(cudaStreamDestroy(mStreams[i]));
+    }
+    delete[] mStreams;
+    // invoke sublayer termination
+    mSublayer->terminate();
 }
 
 size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
-    // TODO: calculate workspace size needed
-    unimplemented();
+    mSublayerWorkspacecSize = mSublayer->workspaceSize(maxBatchSize) + mSublayer->weightSize();
+    auto sublayer_size = mSublayerWorkspacecSize * mMaxConcurrency;
+    auto plugin_size = 0; // TODO: confirm
+    return plugin_size + sublayer_size;
 }
 
 int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
                                 cudaStream_t stream) noexcept {
-    // run the actual MoE calculation
+    // TODO: run the actual MoE calculation
     // 1. calculate token-expert routing
     // 2. get top-1 choice
-    // 3. sort & gather (a.k.a. shuffle) tokens for each export
-    // 4. run each expert
-    //    state = state + dense_relu_dense(layer_norm(state))
-    //    dense_relu_dense: hs = wo * (gelu(wi_0 * hs) * (wi_1 * hs))
+    // 3. sort & gather (a.k.a. shuffle) tokens for each expert
+
+    // 4. run each expert: state = sublayer.run(state)
+    mSublayer->copyWeights(workspace, 0, mStreams[0]);
+
+    for (int i = 0; i < mExpertCount; ++i) {
+        auto workspace_byte = reinterpret_cast<char*>(workspace);
+        auto current_idx = i % mMaxConcurrency;
+        auto next_idx = (i + 1) % mMaxConcurrency;
+        auto current_workspace = workspace_byte + mSublayerWorkspacecSize * current_idx;
+        auto next_workspace = workspace_byte + mSublayerWorkspacecSize * next_idx;
+        CUDA_SAFE_CALL(cudaStreamSynchronize(mStreams[next_idx]));
+        if (i != mExpertCount - 1) {
+            mSublayer->copyWeights(next_workspace, i + 1, mStreams[next_idx]);
+        }
+        // TODO: calcualte input and output address
+        assert(mSublayer->run(batchSize, current_workspace, nullptr, nullptr, current_workspace + mSublayer->weightSize(), mStreams[current_idx]));
+    }
+
+    // synchronize all streams
+    for (int i = 0; i < mMaxConcurrency; ++i) {
+        CUDA_SAFE_CALL(cudaStreamSynchronize(mStreams[i]));
+    }
+
     // 5. unshuffle results
     unimplemented();
 }
