@@ -20,26 +20,41 @@
 #include <typeinfo>
 #include <vector>
 
+#include "../../utility.h"
+
 namespace cnpy {
+
+// RAII page-locked host memory
+struct CudaHostMemory {
+   public:
+    CudaHostMemory(size_t size) : mSize(size) { CUDA_SAFE_CALL(cudaHostAlloc(&mData, size, cudaHostAllocDefault)); }
+    ~CudaHostMemory() { CUDA_SAFE_CALL(cudaFreeHost(mData)); }
+    size_t size() { return mSize; }
+    void *data() { return mData; }
+
+   private:
+    size_t mSize;
+    void* mData;
+};
 
 struct NpyArray {
     NpyArray(const std::vector<size_t>& _shape, size_t _word_size, bool _fortran_order)
         : shape(_shape), word_size(_word_size), fortran_order(_fortran_order) {
         num_vals = 1;
         for (size_t i = 0; i < shape.size(); i++) num_vals *= shape[i];
-        data_holder = std::shared_ptr<std::vector<char>>(new std::vector<char>(num_vals * word_size));
+        data_holder = std::make_shared<CudaHostMemory>(num_vals * word_size);
     }
 
     NpyArray() : shape(0), word_size(0), fortran_order(0), num_vals(0) {}
 
     template <typename T>
     T* data() {
-        return reinterpret_cast<T*>(&(*data_holder)[0]);
+        return reinterpret_cast<T*>(data_holder->data());
     }
 
     template <typename T>
     const T* data() const {
-        return reinterpret_cast<T*>(&(*data_holder)[0]);
+        return reinterpret_cast<T*>(data_holder->data());
     }
 
     template <typename T>
@@ -50,7 +65,7 @@ struct NpyArray {
 
     size_t num_bytes() const { return data_holder->size(); }
 
-    std::shared_ptr<std::vector<char>> data_holder;
+    std::shared_ptr<CudaHostMemory> data_holder;
     std::vector<size_t> shape;
     size_t word_size;
     bool fortran_order;
@@ -215,7 +230,7 @@ void npz_save(std::string zipname, std::string fname, const T* data, const std::
     footer += (uint32_t)(global_header_offset + nbytes +
                          local_header.size());  // offset of start of global headers, since global header now starts
                                                 // after newly written array
-    footer += (uint16_t)0;  // zip file comment length
+    footer += (uint16_t)0;                      // zip file comment length
 
     // write everything
     fwrite(&local_header[0], sizeof(char), local_header.size(), fp);
