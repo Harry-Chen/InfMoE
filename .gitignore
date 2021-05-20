@@ -183,4 +183,4 @@ Thumbs.db #thumbnail cache on Windows
 # End of https://www.toptal.com/developers/gitignore/api/cuda,meson,python
 
 .vscode/
-build/
+builddir/

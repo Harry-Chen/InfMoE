@@ -1,4 +1,4 @@
-.PHONY: all compile clean
+.PHONY: all compile clean distclean
 
 ifeq ($(shell which meson),)
     $(error Please install meson(>=0.50.0) first!)
@@ -9,14 +9,18 @@ ifeq ($(shell which ninja),)
 endif
 
 TENSORRT_PREFIX ?= /usr
+CUDNN_PREFIX ?= /usr
 
-all: builddir compile
+all: compile
 
 builddir:
-	meson setup build -DWITH_TENSORRT=${TENSORRT_PREFIX}
+	meson setup builddir -DWITH_TENSORRT=${TENSORRT_PREFIX} -DWITH_CUDNN=${CUDNN_PREFIX}
 
 compile: builddir
-	ninja -C build
+	ninja -C builddir
 
-clean: builddir
-	ninja -C build clean
+clean:
+	ninja -C builddir clean
+
+distclean:
+	rm -rf builddir
