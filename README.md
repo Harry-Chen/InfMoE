@@ -1,4 +1,4 @@
-# mow-infer
+# moe-infer
 
 Inference framework for MoE-based Transformer models, based on TensorRT a custom plugin
 named `MoELayerPlugin` that can run inference on a MoE layer with any sub-layer.
@@ -61,4 +61,14 @@ The given `export_weight_file` must be a `npz` file containing the following var
 
 * `n/layer_norm_weight`, `n/layer_norm_bias`
 * `n/wi_0_weight`, `n/wi_1_weight`, `n/wo_weight`
+
+
+## Usage for Inference
+
+The plugin can only handle MoE layers. To run inference with a full network, you should slice it before and after any MoE layer:
+
+* for non-MoE layers, jsut save them as `onnx` format and use TensorRT to parse & run it;
+* for MoE layers, dump expert centroids and weights of each expert separately (in the format mentioned above), manually initialize `MoELayerPlugin` with TensorRT API, then run it.
+
+TODO: Python example
 
