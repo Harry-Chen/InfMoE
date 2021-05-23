@@ -52,15 +52,13 @@ This project includes a feed-forward layer of T5 network defined as:
 
 ```text
 hs := hs + dense_relu_dense(layer_norm(hs))
-dense_relu_dense(hs) := wo * (gelu(wi_0 * hs) * (wi_1 * hs))
+layer_norm(hs) := wl * hs / sqrt(mean(pow(hs, 2)) + eps)
+dense_relu_dense(hs) := (gelu(hs @ wi_0^T) * (hs @ wi_1^T)) @ wo^T
 ```
 
 where `wi_0`, `wi_1` and `wo` are linear layers with no bias, first converting input tensor to 4 times large (in last dimension) then back.
 
-The given `export_weight_file` must be a `npz` file containing the following variables (`n` varies from `0` to `expert_count - 1`):
-
-* `n/layer_norm_weight`, `n/layer_norm_bias`
-* `n/wi_0_weight`, `n/wi_1_weight`, `n/wo_weight`
+The given `export_weight_file` must be a `npz` file containing the following variables (`n` varies from `0` to `expert_count - 1`): `n/layer_norm_weight`, `n/wi_0_weight`, `n/wi_1_weight`, `n/wo_weight`.
 
 
 ## Usage for Inference

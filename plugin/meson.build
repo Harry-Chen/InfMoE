@@ -1,9 +1,9 @@
 project(
-    'moe-infer-plugin', 'cpp',
+    'moe-infer-plugin', 'cpp', 'cuda',
     version: '0.1',
     meson_version: '>=0.50.0',
     default_options : [
-      'warning_level=3',
+      'warning_level=2',
       'cpp_std=c++17'
     ]
 )
@@ -36,7 +36,9 @@ plugin_sources = [
     'MoELayerPlugin.cc',
     'MoELayerPluginCreator.cc',
     'sublayers/T5FFLayer.cc',
-    'thirdparty/cnpy/cnpy.cpp'
+    'thirdparty/cnpy/cnpy.cpp',
+    'kernels/layernorm.cu',
+    'kernels/gelu.cu',
 ]
 
 # build library

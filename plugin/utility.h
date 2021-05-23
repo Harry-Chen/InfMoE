@@ -44,4 +44,6 @@ inline const char* cuBlasGetErrorString(cublasStatus_t err) {
     } \
 }
 
+
+
 #endif // UTILITY_H
