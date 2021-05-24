@@ -3,6 +3,7 @@
 #include <cublas.h>
 #include <stdio.h>
 
+#include "cuda/moe.h"
 #include "sublayers/T5FFLayer.h"
 #include "utility.h"
 
@@ -109,38 +110,71 @@ void MoELayerPlugin::terminate() noexcept {
     mSublayer->terminate();
 }
 
-// workspace is consists of:
+// GPU workspace is consists of:
 // 1. maxConcurrency times of layer workspace (weights + intermedaite variables)
 // 2. MoE buffer, including:
-//     a. token routing matrix
-//     b. TODO
+//     a. token-gate affiliation (token_num * expert_count) where token_num = batch_size * seq_len
+//     b. gate selection (int, token_num)
+//     c. token original position (int, token_num)
+//     d. routed features (token_num * d_model)
+//     e. routed features after expert (token_num * d_model)
+//     f. coefficient to mix routed features after & before expert (token_num)
 size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
     // the maximum tokens that might go to one single expert
     // FIXME: hardcoded (as claimed in BASE LAYERS paper)
-    auto max_token_count = static_cast<int32_t>(maxBatchSize * mSequenceLength / mExpertCount * 5);
-    mSublayerWorkspacecSize = mSublayer->weightSize() + mSublayer->workspaceSize(max_token_count);
+    auto max_single_expert_token_count = static_cast<int32_t>(maxBatchSize * mSequenceLength / mExpertCount * 5);
+    mSublayerWorkspacecSize = mSublayer->weightSize() + mSublayer->workspaceSize(max_single_expert_token_count);
     auto sublayer_size = mSublayerWorkspacecSize * mMaxConcurrency;
-    auto plugin_size = 0;  // TODO: confirm
+    // maximum tokens that might be processed by this layer
+    auto max_token_count = maxBatchSize * mSequenceLength;
+    auto plugin_size =
+        (max_token_count * mExpertCount + max_token_count + max_token_count * mEmbeddingSize * 2) * sizeof(float) +
+        max_token_count * 2 * sizeof(int);
     return plugin_size + sublayer_size;
 }
 
 int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
-                                [[maybe_unused]] cudaStream_t stream) noexcept {
-    // TODO: run the actual MoE calculation
-    // 1. calculate token-expert routing
+                                cudaStream_t stream) noexcept {
+    // run the actual MoE calculation
+    // 0. obtain all buffers
+    auto token_num = batchSize * mSequenceLength;
+    auto token_len = mEmbeddingSize;
+    auto d_layer_input = static_cast<const float*>(inputs[0]);
+    auto d_expert_centroids = static_cast<const float*>(mExpertCentroidsGPU.values);
     auto moe_buffer =
         reinterpret_cast<float*>(static_cast<char*>(workspace) + mSublayerWorkspacecSize * mMaxConcurrency);
+    auto d_token_expert_aff = moe_buffer;
+    auto d_gate_selection = reinterpret_cast<int*>(moe_buffer + token_num * mExpertCount);
+    auto d_token_pos = d_gate_selection + token_num;
+    auto d_routed_features = reinterpret_cast<float*>(d_token_pos + token_num);
+    auto d_post_expert_features = d_routed_features + token_num * token_len;
+    auto d_mix_coeff = d_post_expert_features + token_num * token_len;
+    auto d_layer_output = static_cast<float*>(outputs[0]);
 
-    // 2. get top-1 choice (TODO: other assignment methods)
+    // 1. calculate token-expert affiliation
+    // (token_num, token_len) @ (token_len, expert_count)
+    float alpha = 1.0, beta = 0.0;
+    CUBLAS_SAFE_CALL(cublasSetStream_v2(mCublasHandle, stream));
+    CUBLAS_SAFE_CALL(cublasSgemm_v2(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mExpertCount, token_num, token_len, &alpha,
+                                    d_expert_centroids, token_len, d_layer_input, token_len, &beta, d_token_expert_aff,
+                                    mExpertCount));
+    CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
-    // 3. sort & gather (a.k.a. shuffle) tokens for each expert
+    // 2. get expert assignments (TODO: support multiple experts for each token)
+    moe_expert_select(token_num, token_len, d_token_expert_aff, d_gate_selection, stream);
+
+    // 3. count & sort & gather (a.k.a. shuffle) tokens for each expert
+    auto expert_count = new int[mExpertCount]();
+    auto expert_offset = new int[mExpertCount]();
+    moe_expert_count(token_num, d_gate_selection, d_token_pos, expert_count, expert_offset, stream);
+    moe_expert_scatter(token_num, token_len, d_token_expert_aff, d_token_pos, d_routed_features, stream);
 
     // 4. run each expert: state = sublayer.run(state)
     mSublayer->copyWeights(workspace, 0, mStreams[0]);
 
     for (int i = 0; i < mExpertCount; ++i) {
-        auto current_token_count = 0;  // TODO
-
+        auto current_token_count = expert_count[i];
+        auto current_token_offset = expert_offset[i];
         auto workspace_byte = reinterpret_cast<char*>(workspace);
         auto current_idx = i % mMaxConcurrency;
         auto next_idx = (i + 1) % mMaxConcurrency;
@@ -153,19 +187,26 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, vo
         if (i != mExpertCount - 1) {
             mSublayer->copyWeights(next_workspace, i + 1, next_stream);
         }
-        // TODO: calcualte input and output address
+        // run expert on corresponding input / output buffer
         CUBLAS_SAFE_CALL(cublasSetStream_v2(mCublasHandle, current_stream));
-        assert(mSublayer->run(current_token_count, current_workspace, nullptr, nullptr,
+        assert(mSublayer->run(current_token_count, current_workspace, d_routed_features + current_token_offset, d_post_expert_features + current_token_offset,
                               current_workspace + mSublayer->weightSize(), current_stream));
     }
 
-    // synchronize all streams
+    // 5. free CPU buffer & synchronize all streams
+    delete[] expert_count;
+    delete[] expert_offset;
     for (int i = 0; i < mMaxConcurrency; ++i) {
         CUDA_SAFE_CALL(cudaStreamSynchronize(mStreams[i]));
     }
 
-    // 5. unshuffle results
-    unimplemented();
+    // 6. mix features before & after expert
+    // TODO: support dynamic switching method
+    moe_expert_mix_base_layer(token_num, token_len, d_expert_centroids, d_post_expert_features, d_mix_coeff,
+                              d_routed_features, stream);
+
+    // 7. unshuffle results
+    moe_expert_gather(token_num, token_len, d_routed_features, d_token_pos, d_layer_output, stream);
 }
 
 size_t MoELayerPlugin::getSerializationSize() const noexcept {
