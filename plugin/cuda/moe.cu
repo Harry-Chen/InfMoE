@@ -89,7 +89,9 @@ __global__ void batch_gather_kernel(size_t wid, const int *pos, const T *inbuf, 
 }
 
 template <typename T, typename U>
-__global__ void batch_scatter_feature_and_weight_kernel(size_t wid, const int *pos, const T *in_feat, T *out_feat, const U *in_weight, U *out_weight) { 
+__global__ void batch_scatter_feature_and_weight_kernel(
+    size_t wid, const int *pos, const T *in_feat, T *out_feat, const U *in_weight, U *out_weight
+) { 
 	int token_offset = blockIdx.x;
     in_feat += wid * pos[token_offset];
 	out_feat += wid * token_offset;
@@ -104,7 +106,9 @@ __global__ void batch_scatter_feature_and_weight_kernel(size_t wid, const int *p
 }
 
 template <typename T, typename U>
-__global__ void fused_batch_mix_and_gather_kernel(size_t token_num, const int *pos, const U *mix_coeff, const T *inbuf1, const T *inbuf2, T *oubuf) { 
+__global__ void fused_batch_mix_and_gather_kernel(
+    size_t token_num, const int *pos, const U *mix_coeff, const T *inbuf1, const T *inbuf2, T *oubuf
+) { 
     int token_offset = blockIdx.x;
     U alpha = sigmoid(mix_coeff[token_offset]);
 	inbuf1 += token_num * token_offset;
@@ -126,7 +130,9 @@ void moe_expert_select(
     float *d_expert_weight,
     cudaStream_t stream
 ) {
-    expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(token_num, token_len, d_token_expert_aff, d_gate_selection, d_expert_weight);
+    expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
+        token_num, token_len, d_token_expert_aff, d_gate_selection, d_expert_weight
+    );
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 }
 
@@ -142,7 +148,9 @@ void moe_expert_count(
     auto token_pos = new int[token_num];
     auto expert_count = new int[token_num];
 
-    CUDA_SAFE_CALL(cudaMemcpyAsync(gate_selection, d_gate_selection, token_num * sizeof(int), cudaMemcpyDeviceToHost, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(
+        gate_selection, d_gate_selection, token_num * sizeof(int), cudaMemcpyDeviceToHost, stream
+    ));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
     // run counting sorting on CPU
@@ -177,7 +185,9 @@ void moe_expert_scatter(
     float *d_routed_mix_coeff,
     cudaStream_t stream
 ) {
-    batch_scatter_feature_and_weight_kernel<<<token_num, 256, 0, stream>>>(token_len, d_token_pos, d_input, d_routed_features, d_mix_coeff, d_routed_mix_coeff);
+    batch_scatter_feature_and_weight_kernel<<<token_num, 256, 0, stream>>>(
+        token_len, d_token_pos, d_input, d_routed_features, d_mix_coeff, d_routed_mix_coeff
+    );
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 }
 
@@ -205,6 +215,8 @@ void moe_expert_base_layer_fused_mix_and_gather(
 ) {
     // routed_features = alpha * self.expert_network(routed_features) + (1 - alpha) * routed_features
     // output = gather(routed_features, token_pos)
-    fused_batch_mix_and_gather_kernel<<<token_num, 256, 0, stream>>>(token_len, d_token_pos, d_mix_coeff, d_post_expert_features, d_routed_features, d_output);
+    fused_batch_mix_and_gather_kernel<<<token_num, 256, 0, stream>>>(
+        token_len, d_token_pos, d_mix_coeff, d_post_expert_features, d_routed_features, d_output
+    );
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 }

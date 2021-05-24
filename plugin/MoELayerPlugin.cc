@@ -17,21 +17,23 @@ void MoELayerPlugin::initializeGPUCentroids() {
 }
 
 MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU,
-                               const char* expertWeightFile)
+                               const char* expertWeightFile, const char *sublayerType)
     : mLayerName(strdup(layerName)),
       mExpertCount(expertCount),
       mHiddenSize(hiddenSize),
       mExpertCentroidsCPU(expertCentroidsCPU),
-      mExpertWeightFile(expertWeightFile) {
+      mExpertWeightFile(expertWeightFile),
+      mSublayerType(strdup(sublayerType)) {
     // check parameters
     assert(mExpertCentroidsCPU.type == DataType::kFLOAT);
     assert(mExpertCentroidsCPU.values != nullptr);
     assert(mExpertCentroidsCPU.count > 0);
+    initializeGPUCentroids();
 }
 
 MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
     : MoELayerPlugin(strdup(src.mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU,
-                     strdup(src.mExpertWeightFile)) {
+                     strdup(src.mExpertWeightFile), strdup(src.mSublayerType)) {
     // copy centroids
     auto size = mExpertCentroidsCPU.count * sizeof(float);
     float* cpu_centroids = new float[size];
@@ -43,11 +45,25 @@ MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
 MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength)
     : mLayerName(strdup(layerName)) {
     assert(serialLength >= METADATA_LENGTH);
+    // 4 int32_t
     auto int_buffer = reinterpret_cast<const int*>(serialData);
     mExpertCount = *int_buffer++;
-    mHiddenSize = *int_buffer;
-    auto int64_buffer = reinterpret_cast<const int64_t*>(int_buffer);
-    // initialize centroids
+    mHiddenSize = *int_buffer++;
+    auto expert_weight_file_len = *int_buffer++;
+    auto sublayer_type_len = *int_buffer++;
+    // 2 strings
+    auto char_buffer = reinterpret_cast<const char*>(int_buffer);
+    mExpertWeightFile = strdup(char_buffer);
+    char_buffer += expert_weight_file_len + 1;
+    mSublayerType = strdup(char_buffer);
+    char_buffer += sublayer_type_len + 1;
+    auto string_size = expert_weight_file_len + sublayer_type_len + 2;
+    // align to 8 byte
+    if (string_size % 8 != 0) {
+        char_buffer += 8 - (string_size % 8);
+    }
+    // initialize centroids (int64_t)
+    auto int64_buffer = reinterpret_cast<const int64_t*>(char_buffer);
     mExpertCentroidsCPU.count = *int64_buffer++;
     auto size = mExpertCentroidsCPU.count * sizeof(float);
     assert(size == serialLength - METADATA_LENGTH);
@@ -55,9 +71,6 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
     memcpy(cpu_centroids, int64_buffer, mExpertCentroidsCPU.count * sizeof(float));
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
-    // initialize sublayer
-    // TODO: read specific layer from config
-    mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
 }
 
 MoELayerPlugin::~MoELayerPlugin() { terminate(); }
@@ -88,6 +101,12 @@ int32_t MoELayerPlugin::initialize() noexcept {
         CUDA_SAFE_CALL(cudaStreamCreate(&mStreams[i]));
     }
     assert(mCublasHandle != nullptr);
+    // initialize sublayer according to parameter
+    if (strcmp(mSublayerType, sublayer_type::T5FF) == 0) {
+        mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
+    } else {
+        fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
+    }
     mSublayer->initialize();
     return 0;
 }
@@ -216,14 +235,31 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, vo
 }
 
 size_t MoELayerPlugin::getSerializationSize() const noexcept {
-    return METADATA_LENGTH + mExpertCentroidsCPU.count * sizeof(float);
+    return METADATA_LENGTH + mExpertCentroidsCPU.count * sizeof(float) + strlen(mExpertWeightFile) + strlen(mSublayerType);
 }
 
 void MoELayerPlugin::serialize(void* buffer) const noexcept {
+    // 4 int32_t
     auto int_buffer = reinterpret_cast<int*>(buffer);
     *int_buffer++ = mExpertCount;
     *int_buffer++ = mHiddenSize;
-    auto int64_buffer = reinterpret_cast<int64_t*>(int_buffer);
+    auto expert_weight_file_len = strlen(mExpertWeightFile);
+    auto sublayer_type_len = strlen(mSublayerType);
+    *int_buffer++ = expert_weight_file_len;
+    *int_buffer++ = sublayer_type_len;
+    // 2 strings
+    auto char_buffer = reinterpret_cast<char*>(int_buffer);
+    strcpy(char_buffer, mExpertWeightFile);
+    char_buffer += expert_weight_file_len + 1;
+    strcpy(char_buffer, mSublayerType);
+    char_buffer += sublayer_type_len + 1;
+    auto string_size = expert_weight_file_len + sublayer_type_len + 2;
+    // align to 8 byte
+    if (string_size % 8 != 0) {
+        char_buffer += 8 - (string_size % 8);
+    }
+    // int64_t
+    auto int64_buffer = reinterpret_cast<int64_t*>(char_buffer);
     *int64_buffer++ = mExpertCentroidsCPU.count;
     memcpy(int64_buffer, mExpertCentroidsCPU.values, mExpertCentroidsCPU.count * sizeof(float));
 }

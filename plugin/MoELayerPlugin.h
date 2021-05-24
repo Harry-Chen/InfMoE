@@ -17,6 +17,11 @@ static const char* MOE_LAYER_PLUGIN_VERSION{"1"};
 static const char* MOE_LAYER_PLUGIN_NAME{"MoELayerPlugin"};
 }  // namespace
 
+
+namespace sublayer_type {
+static const char *T5FF{"T5_FF"};
+}
+
 class MoELayerPlugin : public IPluginV2 {
 
    private:
@@ -32,7 +37,7 @@ class MoELayerPlugin : public IPluginV2 {
     int mHiddenSize;
     int mMaxConcurrency = 2; // maximum number of sublayers on GPU memory
     Weights mExpertCentroidsCPU, mExpertCentroidsGPU;
-    const char *mExpertWeightFile;
+    const char *mExpertWeightFile, *mSublayerType;
     MoESubLayer *mSublayer;
     mutable size_t mSublayerWorkspacecSize;
     
@@ -40,11 +45,11 @@ class MoELayerPlugin : public IPluginV2 {
     int mEmbeddingSize = -1;
     int mSequenceLength = -1;
     void initializeGPUCentroids();
-    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mExpertCentroidsCPU.count);
+    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mExpertCentroidsCPU.count) + sizeof(int) * 2;
 
    public:
     // constructor for MoELayerPluginCreator
-    explicit MoELayerPlugin(const char *layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU, const char *expertWeightFile);
+    explicit MoELayerPlugin(const char *layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU, const char *expertWeightFile, const char *sublayerType);
     // constructor for clone
     explicit MoELayerPlugin(const MoELayerPlugin &src);
     // constructor for deserialization
@@ -76,7 +81,7 @@ class MoELayerPlugin : public IPluginV2 {
 class MoELayerPluginCreator : public IPluginCreator {
    private:
     const char *mPluginNamespace = nullptr;
-    const static std::array<PluginField, 4> mPluginAttributes;
+    const static std::array<PluginField, 5> mPluginAttributes;
     const static PluginFieldCollection mFC;
    public:
     MoELayerPluginCreator();
