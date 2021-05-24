@@ -29,9 +29,9 @@ ninja -C builddir # or just run `make`
 
 If everything goes well, you can find `libmoelayer.so` in `builddir`.
 
-## Plugin parameters
+## Plugin attributes
 
-When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the following parameters must be specified:
+When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the following attributes must be specified:
 
 * `expert_count`: INT32, number of experts (sub-layers)
 * `hidden_size`: INT32, the intermediate size of feed forward network (might not be used by sub-layer)
@@ -50,7 +50,7 @@ Extend `MoESubLayer` class to implement your own sub-layer.
 
 ### T5FFLayer
 
-This project includes a feed-forward layer of T5 network defined as:
+This project includes an sublayer implementation of feed-forward layer in T5 network. It is defined as:
 
 ```text
 hs := hs + dense_relu_dense(layer_norm(hs))
