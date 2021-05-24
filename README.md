@@ -35,8 +35,10 @@ When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the follo
 
 * `expert_count`: INT32, number of experts (sub-layers)
 * `hidden_size`: INT32, the intermediate size of feed forward network (might not be used by sub-layer)
-* `expert_centroids`: FLOAT32 array, weight for dispatching tokens to experts, must be shape `(expert_count, d_model)` where `d_model` is the last dimension of input tensor
+* `max_concurrency`: INT32, maximal concurrent experts in GPU memory (default to 2), setting it too large will lead to OOM
+* `expert_centroids`: FLOAT32 array, weight for dispatching tokens to experts, must be shape `(d_model, expert_count)` where `d_model` is the last dimension of input tensor (a.k.a. embedding size)
 * `expert_weight_file`: null-terminated char pointer, path to expert weight file, to be read by implmentation of sub-layer
+* `expert_sublayer_type`: type of sub-layer used, currently only `T5_FF` can be used
 
 ## Scheduling
 
