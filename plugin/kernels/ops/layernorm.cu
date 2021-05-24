@@ -1,7 +1,7 @@
 #include <algorithm>
 #include <cstdint>
 
-#include "kernels.h"
+#include "../ops.h"
 
 // the following code are adapted from https://github.com/NVIDIA/apex/blob/master/csrc/layer_norm_cuda_kernel.cu
 

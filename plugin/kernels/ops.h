@@ -1,8 +1,9 @@
 #pragma once
 
-#ifndef KERNELS_H
-#define KERNELS_H
+#ifndef OPS_H
+#define OPS_H
 
+#include <cstdint>
 #include <cuda_runtime.h>
 
 template <typename T, typename U>
@@ -19,4 +20,4 @@ void layernorm_kernel(T* __restrict__ output, const T* __restrict__ input,
 template <typename T>
 void fused_gelu_dot_kernel(T* A, T* B, size_t len, cudaStream_t stream);
 
-#endif  // KERNELS_H
+#endif  // OPS_H

@@ -5,7 +5,7 @@
 #include <cassert>
 #include <string>
 
-#include "../kernels/kernels.h"
+#include "../kernels/ops.h"
 #include "utility.h"
 
 T5FFLayer::~T5FFLayer() {}

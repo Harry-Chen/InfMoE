@@ -1,6 +1,8 @@
 #include <thrust/device_vector.h>
 #include <thrust/transform.h>
 
+#include "../ops.h"
+
 template <typename T>
 struct gelu_dot {
     constexpr static T A = 0.5;
