@@ -37,6 +37,7 @@ plugin_sources = [
     'MoELayerPluginCreator.cc',
     'sublayers/T5FFLayer.cc',
     'thirdparty/cnpy/cnpy.cpp',
+    'cuda/moe.cu',
     'cuda/ops/layernorm.cu',
     'cuda/ops/gelu.cu',
 ]

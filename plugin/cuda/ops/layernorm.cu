@@ -2,21 +2,11 @@
 #include <cstdint>
 
 #include "../ops.h"
+#include "../common.cuh"
 
 // the following code are adapted from https://github.com/NVIDIA/apex/blob/master/csrc/layer_norm_cuda_kernel.cu
 
 namespace {
-
-template <typename T>
-__device__ __forceinline__ T WARP_SHFL_XOR(T value, int laneMask, int width = warpSize,
-                                           unsigned int mask = 0xffffffff) {
-    return __shfl_xor_sync(mask, value, laneMask, width);
-}
-
-template <typename T>
-__device__ __forceinline__ T WARP_SHFL(T value, int srcLane, int width = warpSize, unsigned int mask = 0xffffffff) {
-    return __shfl_sync(mask, value, srcLane, width);
-}
 
 template <typename T>
 struct SharedMemory;
