@@ -1,6 +1,6 @@
 #include "MoELayerPlugin.h"
 
-#include <cublas.h>
+#include <cublas_v2.h>
 #include <stdio.h>
 
 #include "cuda/moe.h"
@@ -16,11 +16,23 @@ void MoELayerPlugin::initializeGPUCentroids() {
     mExpertCentroidsGPU.values = gpu_centroids;
 }
 
-MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, Weights expertCentroidsCPU,
-                               const char* expertWeightFile, const char *sublayerType)
+void MoELayerPlugin::createSublayer() {
+    assert(mSublayerType != nullptr);
+    assert(mSublayer == nullptr);
+    // initialize sublayer according to parameter
+    if (strcmp(mSublayerType, sublayer_type::T5FF) == 0) {
+        mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
+    } else {
+        fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
+    }
+}
+
+MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, int maxConcurrency,
+                               Weights expertCentroidsCPU, const char* expertWeightFile, const char *sublayerType)
     : mLayerName(strdup(layerName)),
       mExpertCount(expertCount),
       mHiddenSize(hiddenSize),
+      mMaxConcurrency(maxConcurrency),
       mExpertCentroidsCPU(expertCentroidsCPU),
       mExpertWeightFile(expertWeightFile),
       mSublayerType(strdup(sublayerType)) {
@@ -29,26 +41,29 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hidde
     assert(mExpertCentroidsCPU.values != nullptr);
     assert(mExpertCentroidsCPU.count > 0);
     initializeGPUCentroids();
+    createSublayer();
 }
 
 MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
-    : MoELayerPlugin(strdup(src.mLayerName), mExpertCount, mHiddenSize, mExpertCentroidsCPU,
+    : MoELayerPlugin(strdup(src.mLayerName), src.mExpertCount, src.mHiddenSize, src.mMaxConcurrency, src.mExpertCentroidsCPU,
                      strdup(src.mExpertWeightFile), strdup(src.mSublayerType)) {
     // copy centroids
-    auto size = mExpertCentroidsCPU.count * sizeof(float);
+    auto size = src.mExpertCentroidsCPU.count * sizeof(float);
     float* cpu_centroids = new float[size];
     memcpy(cpu_centroids, src.mExpertCentroidsCPU.values, size);
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
+    createSublayer();
 }
 
 MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength)
     : mLayerName(strdup(layerName)) {
     assert(serialLength >= METADATA_LENGTH);
-    // 4 int32_t
+    // 5 int32_t
     auto int_buffer = reinterpret_cast<const int*>(serialData);
     mExpertCount = *int_buffer++;
     mHiddenSize = *int_buffer++;
+    mMaxConcurrency = *int_buffer++;
     auto expert_weight_file_len = *int_buffer++;
     auto sublayer_type_len = *int_buffer++;
     // 2 strings
@@ -71,6 +86,7 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
     memcpy(cpu_centroids, int64_buffer, mExpertCentroidsCPU.count * sizeof(float));
     mExpertCentroidsCPU.values = cpu_centroids;
     initializeGPUCentroids();
+    createSublayer();
 }
 
 MoELayerPlugin::~MoELayerPlugin() { terminate(); }
@@ -87,7 +103,7 @@ void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs
                                          int32_t nbOutputs, DataType type, PluginFormat format,
                                          int32_t maxBatchSize) noexcept {
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
-    assert(mSublayer->init(inputDims, nbInputs, outputDims, nbOutputs));
+    assert(mSublayer->configureWithFormat(inputDims, nbInputs, outputDims, nbOutputs));
     auto& dim = inputDims[0];
     mEmbeddingSize = dim.d[1];
     mSequenceLength = dim.d[0];
@@ -101,12 +117,6 @@ int32_t MoELayerPlugin::initialize() noexcept {
         CUDA_SAFE_CALL(cudaStreamCreate(&mStreams[i]));
     }
     assert(mCublasHandle != nullptr);
-    // initialize sublayer according to parameter
-    if (strcmp(mSublayerType, sublayer_type::T5FF) == 0) {
-        mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
-    } else {
-        fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
-    }
     mSublayer->initialize();
     return 0;
 }
@@ -243,6 +253,7 @@ void MoELayerPlugin::serialize(void* buffer) const noexcept {
     auto int_buffer = reinterpret_cast<int*>(buffer);
     *int_buffer++ = mExpertCount;
     *int_buffer++ = mHiddenSize;
+    *int_buffer++ = mMaxConcurrency;
     auto expert_weight_file_len = strlen(mExpertWeightFile);
     auto sublayer_type_len = strlen(mSublayerType);
     *int_buffer++ = expert_weight_file_len;

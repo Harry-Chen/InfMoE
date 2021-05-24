@@ -10,7 +10,7 @@
 
 T5FFLayer::~T5FFLayer() {}
 
-bool T5FFLayer::init(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) {
+bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) {
     assert(nbInputs == 1 && nbOutputs == 1);
     // outputDims[0] should equal inputDims[0]
     assert(outputDims[0].nbDims == inputDims[0].nbDims && inputDims[0].nbDims == 1);

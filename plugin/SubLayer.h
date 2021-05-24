@@ -4,7 +4,7 @@
 #define SUBLAYER_H
 
 #include <NvInferPlugin.h>
-#include <cublas.h>
+#include <cublas_v2.h>
 
 #include <cassert>
 
@@ -30,7 +30,7 @@ class MoESubLayer {
           mWeightFile(weightFile),
           mCublasHandle(cublasHandle){};
     virtual ~MoESubLayer(){};
-    virtual bool init(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) = 0;
+    virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) = 0;
     virtual size_t weightSize() = 0;
     virtual size_t workspaceSize(int32_t tokenCount) = 0;
     virtual Dims getOutputDimensions(int32_t index, const Dims *inputs, int32_t nbInputDims) = 0;

@@ -6,7 +6,7 @@
 #include <cstdio>
 #include <cassert>
 #include <cuda_runtime.h>
-#include <cublas.h>
+#include <cublas_v2.h>
 
 #define unimplemented(...) do { fprintf(stderr, "not implemented\n"); assert(false); __builtin_unreachable(); } while (false);
 

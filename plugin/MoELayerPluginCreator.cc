@@ -14,17 +14,20 @@ REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
 namespace field_name {
 const char *EXPERT_COUNT{"expert_count"};
 const char *HIDDEN_SIZE{"hidden_size"};
+const char *MAX_CONCURRENCY{"max_concurrency"};
 const char *EXPERT_CENTROIDS{"expert_centroids"};
 const char *EXPERT_WEIGHT_FILE{"expert_weight_file"};
 const char *EXPERT_SUBLAYER_TYPE{"expert_sublayer_type"};
 }  // namespace
 
 // static class member
-const std::array<PluginField, 5> MoELayerPluginCreator::mPluginAttributes{
+const std::array<PluginField, 6> MoELayerPluginCreator::mPluginAttributes{
     // count of experts
     PluginField{field_name::EXPERT_COUNT, nullptr, PluginFieldType::kINT32, 1},
     // DIM -> hidden_size -> DIM
     PluginField{field_name::HIDDEN_SIZE, nullptr, PluginFieldType::kINT32, 1},
+    // max concurrent experts in GPU memory
+    PluginField{field_name::MAX_CONCURRENCY, nullptr, PluginFieldType::kINT32, 1},
     // mapping of token to expert
     PluginField{field_name::EXPERT_CENTROIDS, nullptr, PluginFieldType::kFLOAT32, 1},
     // weight of experts, read from separate files
@@ -46,6 +49,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
 
     int expert_count = -1;
     int hidden_size = -1;
+    int max_concurrency = 2;
     Weights expert_centroids;
     char *weight_file = nullptr;
     char *sublayer = nullptr;
@@ -60,9 +64,12 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
         } else if (strcmp(name, field_name::HIDDEN_SIZE) == 0) {
             assert(field.length == 1 && field.data != nullptr);
             hidden_size = *static_cast<const int *>(field.data);
+        } else if (strcmp(name, field_name::MAX_CONCURRENCY) == 0) {
+            assert(field.length == 1 && field.data != nullptr);
+            max_concurrency = *static_cast<const int *>(field.data);
         } else if (strcmp(name, field_name::EXPERT_CENTROIDS) == 0) {
             assert(field.length > 0 && field.data != nullptr);
-            auto centroids = static_cast<float *>(malloc(sizeof(float) * field.length));
+            auto centroids = new float[field.length];
             memcpy(centroids, field.data, field.length * sizeof(float));
             expert_centroids.type = DataType::kFLOAT;
             expert_centroids.count = field.length;
@@ -82,6 +89,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     // check parameters
     assert(expert_count > 0);
     assert(hidden_size > 0);
+    assert(max_concurrency > 0);
     assert(expert_centroids.values != nullptr);
     assert(sublayer != nullptr);
 
@@ -95,7 +103,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
         assert(false);
     }
 
-    auto plugin = new MoELayerPlugin(name, expert_count, hidden_size, expert_centroids, weight_file, sublayer);
+    auto plugin = new MoELayerPlugin(name, expert_count, hidden_size, max_concurrency, expert_centroids, weight_file, sublayer);
     plugin->setPluginNamespace(mPluginNamespace);
 
     return plugin;

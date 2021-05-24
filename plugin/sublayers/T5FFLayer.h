@@ -33,7 +33,7 @@ class T5FFLayer : public MoESubLayer {
    public:
     using MoESubLayer::MoESubLayer;
     virtual ~T5FFLayer() override;
-    virtual bool init(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) override;
+    virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) override;
     virtual size_t weightSize() override;
     virtual size_t workspaceSize(int32_t tokenCount) override;
     virtual Dims getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) override;
