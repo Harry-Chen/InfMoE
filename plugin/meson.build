@@ -4,7 +4,7 @@ project(
     meson_version: '>=0.50.0',
     default_options : [
       'warning_level=2',
-      'cpp_std=c++17'
+      'cpp_std=c++17',
     ]
 )
 add_global_arguments('-Wno-deprecated-declarations', language : 'cpp')
@@ -47,5 +47,5 @@ shared_library(
     'moelayer',
     plugin_sources,
     include_directories: external_inc,
-    dependencies: [cuda_dep, cudnn_dep, nvinfer_dep, zlib_dep]
+    dependencies: [cuda_dep, cudnn_dep, nvinfer_dep, zlib_dep],
 )

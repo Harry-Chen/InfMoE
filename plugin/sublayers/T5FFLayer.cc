@@ -5,15 +5,19 @@
 #include <cassert>
 #include <string>
 
+#include "../thirdparty/dbg.h"
 #include "../cuda/ops.h"
 #include "utility.h"
 
-T5FFLayer::~T5FFLayer() {}
+T5FFLayer::~T5FFLayer() {
+    dbg("destructing T5FFLayer");
+}
 
 bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) {
     assert(nbInputs == 1 && nbOutputs == 1);
     // outputDims[0] should equal inputDims[0]
-    assert(outputDims[0].nbDims == inputDims[0].nbDims && inputDims[0].nbDims == 1);
+    // dbg(outputDims[0].nbDims, inputDims[0].nbDims);
+    assert(outputDims[0].nbDims == inputDims[0].nbDims && inputDims[0].nbDims == 2);
     auto &dim = inputDims[0];
     auto &dim2 = outputDims[0];
     assert(dim.nbDims == 2 && dim2.nbDims == 2);
@@ -28,7 +32,7 @@ bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, con
 
 Dims T5FFLayer::getOutputDimensions(int32_t index, const Dims *inputs, int32_t nbInputDims) {
     assert(index == 0);
-    assert(nbInputDims == 3);  // (batch_size, seq_len, embed_size)
+    assert(nbInputDims == 1);
     // output tensor should have the same shape with input tensor
     return inputs[0];
 }
@@ -36,6 +40,7 @@ Dims T5FFLayer::getOutputDimensions(int32_t index, const Dims *inputs, int32_t n
 size_t T5FFLayer::weightSize() { return layernormWeightSize() + 3 * intermediateFFWeightSize(); }
 
 size_t T5FFLayer::workspaceSize(int32_t tokenCount) {
+    dbg("call workspaceSize");
     // calculate intermediate matrix size for given count of tokens
     // all intermediate variables:
     // layernorm_output: token_num * d_ff
@@ -136,6 +141,10 @@ void T5FFLayer::initialize() {
 }
 
 void T5FFLayer::terminate() {
+    dbg("call terminate");
     // free CPU memory
-    delete mSavedWeights;
+    if (mSavedWeights != nullptr) {
+        delete mSavedWeights;
+        mSavedWeights = nullptr;
+    }
 }

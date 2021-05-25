@@ -3,6 +3,7 @@
 #include <cuda_runtime.h>
 
 #include "../utility.h"
+#include "../thirdparty/dbg.h"
 #include "common.cuh"
 
 namespace {
@@ -130,10 +131,13 @@ void moe_expert_select(
     float *d_expert_weight,
     cudaStream_t stream
 ) {
+    dbg("before kernel");
     expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
         token_num, token_len, d_token_expert_aff, d_gate_selection, d_expert_weight
     );
+    dbg("after kernel");
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+    dbg("after sync");
 }
 
 void moe_expert_count(
@@ -146,13 +150,16 @@ void moe_expert_count(
 ) {
     auto gate_selection = new int[token_num];
     auto token_pos = new int[token_num];
-    auto expert_count = new int[token_num];
+    auto expert_count = new int[expert_num];
 
+    dbg("before copy");
     CUDA_SAFE_CALL(cudaMemcpyAsync(
         gate_selection, d_gate_selection, token_num * sizeof(int), cudaMemcpyDeviceToHost, stream
     ));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
+    dbg("after copy");
 
+    dbg("before sort");
     // run counting sorting on CPU
     for (int i = 0; i < token_num; ++i) {
         expert_count[gate_selection[i]]++;
@@ -166,6 +173,7 @@ void moe_expert_count(
     for (int i = 0; i < token_num; ++i) {
         token_pos[expert_count[gate_selection[i]]++] = i;
     }
+    dbg("after sort");
 
     // copy back to GPU
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_token_pos, token_pos, token_num * sizeof(int), cudaMemcpyHostToDevice, stream));

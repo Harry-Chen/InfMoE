@@ -31,7 +31,7 @@ class MoELayerPlugin : public IPluginV2 {
     const char* mPluginNamespace = nullptr;
     int mMaxBatchSize = -1;
     cublasHandle_t mCublasHandle = nullptr;
-    cudaStream_t* mStreams;
+    cudaStream_t* mStreams = nullptr;
 
     // layer parameters
     int mExpertCount;
@@ -62,7 +62,7 @@ class MoELayerPlugin : public IPluginV2 {
     // constructor for deserialization
     explicit MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength);
     // destructor
-    ~MoELayerPlugin();
+    virtual ~MoELayerPlugin();
     // overloaded virtual functions from IPluginV2
     const char* getPluginType() const noexcept override { return ::MOE_LAYER_PLUGIN_NAME; };
     const char* getPluginVersion() const noexcept override { return ::MOE_LAYER_PLUGIN_VERSION; }

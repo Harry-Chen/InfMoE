@@ -82,6 +82,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
             assert(field.length > 0 && field.data != nullptr);
             weight_file = strdup(static_cast<const char *>(field.data));
         } else if (strcmp(name, field_name::EXPERT_SUBLAYER_TYPE) == 0) {
+            dbg(static_cast<const char*>(field.data));
             assert(field.length > 0 && field.data != nullptr);
             sublayer = strdup(static_cast<const char *>(field.data));
         } else {
@@ -97,11 +98,11 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     assert(expert_centroids.values != nullptr);
     assert(sublayer != nullptr);
 
-    dbg(expert_count, hidden_size, max_concurrency, expert_centroids.count, sublayer);
+    dbg(expert_count, hidden_size, max_concurrency, expert_centroids.count, sublayer, weight_file);
 
     struct stat64 weight_stat {};
     if (stat64(weight_file, &weight_stat) != 0) {
-        perror("Cannot stat() weight file: ");
+        perror("Cannot stat() weight file");
         assert(false);
     }
     if (!S_ISREG(weight_stat.st_mode)) {

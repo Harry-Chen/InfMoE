@@ -16,7 +16,7 @@ class T5FFLayer : public MoESubLayer {
    
    // weights
    private:
-    cnpy::npz_t *mSavedWeights;
+    cnpy::npz_t *mSavedWeights = nullptr;
     size_t layernormWeightSize() const {
         return mEmbeddingSize * sizeof(float);
     }

@@ -3,6 +3,7 @@
 #include <cublas_v2.h>
 #include <stdio.h>
 
+#include "thirdparty/dbg.h"
 #include "cuda/moe.h"
 #include "sublayers/T5FFLayer.h"
 #include "utility.h"
@@ -24,6 +25,7 @@ void MoELayerPlugin::createSublayer() {
         mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
     } else {
         fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
+        assert(false);
     }
 }
 
@@ -36,6 +38,7 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hidde
       mExpertCentroidsCPU(expertCentroidsCPU),
       mExpertWeightFile(expertWeightFile),
       mSublayerType(strdup(sublayerType)) {
+    dbg(this, "construct MoELayerPlugin from creator");
     // check parameters
     assert(mExpertCentroidsCPU.type == DataType::kFLOAT);
     assert(mExpertCentroidsCPU.values != nullptr);
@@ -47,6 +50,9 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int hidde
 MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
     : MoELayerPlugin(strdup(src.mLayerName), src.mExpertCount, src.mHiddenSize, src.mMaxConcurrency, src.mExpertCentroidsCPU,
                      strdup(src.mExpertWeightFile), strdup(src.mSublayerType)) {
+    dbg(this, "construct MoELayerPlugin from copy constructor");
+    // WORKAROUND
+    mSublayer = nullptr;
     // copy centroids
     auto size = src.mExpertCentroidsCPU.count * sizeof(float);
     float* cpu_centroids = new float[size];
@@ -58,6 +64,7 @@ MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
 
 MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength)
     : mLayerName(strdup(layerName)) {
+    dbg(this, "construct MoELayerPlugin from serialized data");
     assert(serialLength >= METADATA_LENGTH);
     // 5 int32_t
     auto int_buffer = reinterpret_cast<const int*>(serialData);
@@ -89,19 +96,25 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
     createSublayer();
 }
 
-MoELayerPlugin::~MoELayerPlugin() { terminate(); }
+MoELayerPlugin::~MoELayerPlugin() { 
+    dbg(this, "destructing MoELayerPlugin");
+    terminate(); 
+}
 
 Dims MoELayerPlugin::getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) noexcept {
+    dbg(index, nbInputDims);
     return mSublayer->getOutputDimensions(index, inputs, nbInputDims);
 }
 
 bool MoELayerPlugin::supportsFormat(DataType type, PluginFormat format) const noexcept {
+    dbg(type, format);
     return type == DataType::kFLOAT && format == PluginFormat::kLINEAR;
 }
 
 void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs, const Dims* outputDims,
                                          int32_t nbOutputs, DataType type, PluginFormat format,
                                          int32_t maxBatchSize) noexcept {
+    dbg(maxBatchSize);
     assert(nbInputs == 1 && nbOutputs == 1 && type == DataType::kFLOAT && format == PluginFormat::kLINEAR);
     assert(mSublayer->configureWithFormat(inputDims, nbInputs, outputDims, nbOutputs));
     auto& dim = inputDims[0];
@@ -111,6 +124,7 @@ void MoELayerPlugin::configureWithFormat(const Dims* inputDims, int32_t nbInputs
 }
 
 int32_t MoELayerPlugin::initialize() noexcept {
+    dbg(this, "call initialize");
     CUBLAS_SAFE_CALL(cublasCreate_v2(&mCublasHandle));
     mStreams = new cudaStream_t[mMaxConcurrency];
     for (int i = 0; i < mMaxConcurrency; ++i) {
@@ -122,21 +136,34 @@ int32_t MoELayerPlugin::initialize() noexcept {
 }
 
 void MoELayerPlugin::terminate() noexcept {
+    dbg(this, "call terminate");
     // free centroids on CPU and GPU
-    delete[] static_cast<float*>(const_cast<void*>(mExpertCentroidsCPU.values));
-    CUDA_SAFE_CALL(cudaFree(const_cast<void*>(mExpertCentroidsGPU.values)));
-    mExpertCentroidsGPU.values = nullptr;
-    mExpertCentroidsCPU.values = nullptr;
-    // destroy cublas handle
-    CUBLAS_SAFE_CALL(cublasDestroy_v2(mCublasHandle));
-    mCublasHandle = nullptr;
-    // destroy cuda streams
-    for (int i = 0; i < mMaxConcurrency; ++i) {
-        CUDA_SAFE_CALL(cudaStreamDestroy(mStreams[i]));
+    if (mExpertCentroidsCPU.values != nullptr) {
+        delete[] static_cast<float*>(const_cast<void*>(mExpertCentroidsCPU.values));
+        mExpertCentroidsGPU.values = nullptr;
     }
-    delete[] mStreams;
+    if (mExpertCentroidsGPU.values != nullptr) {
+        CUDA_SAFE_CALL(cudaFree(const_cast<void*>(mExpertCentroidsGPU.values)));
+        mExpertCentroidsCPU.values = nullptr;
+    }
+    // destroy cublas handle
+    if (mCublasHandle != nullptr) {
+        CUBLAS_SAFE_CALL(cublasDestroy_v2(mCublasHandle));
+        mCublasHandle = nullptr;
+    }
+    // destroy cuda streams
+    if (mStreams != nullptr) {
+        for (int i = 0; i < mMaxConcurrency; ++i) {
+            CUDA_SAFE_CALL(cudaStreamDestroy(mStreams[i]));
+        }
+        delete[] mStreams;
+    }
     // invoke sublayer termination
-    mSublayer->terminate();
+    if (mSublayer != nullptr) {
+        mSublayer->terminate();
+        delete mSublayer;
+        mSublayer = nullptr;
+    }
 }
 
 // GPU workspace is consists of:
@@ -160,11 +187,14 @@ size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
     auto plugin_size =
         (max_token_count * mExpertCount + max_token_count * 2 + max_token_count * mEmbeddingSize * 2) * sizeof(float) +
         max_token_count * 2 * sizeof(int);
-    return std::max(plugin_size, sublayer_size);
+    auto final_size = std::max(plugin_size, sublayer_size);
+    dbg(final_size);
+    return final_size;
 }
 
 int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
                                 cudaStream_t stream) noexcept {
+    dbg("call enqueue");
     // run the actual MoE calculation
     // 0. obtain all buffers
     auto token_num = batchSize * mSequenceLength;
@@ -190,15 +220,19 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
                                     mExpertCount));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
+    dbg("after centroids");
     // 2. get expert assignments (TODO: support multiple experts for each token)
     moe_expert_select(token_num, token_len, d_token_expert_aff, d_gate_selection, d_mix_coeff, stream);
+    dbg("after select");
 
     // 3. count & sort & gather (a.k.a. shuffle) tokens for each expert
     auto expert_offset = new int[mExpertCount + 1]();
     expert_offset[mExpertCount] = token_num;
     moe_expert_count(token_num, mExpertCount, d_gate_selection, d_token_pos, expert_offset, stream);
+    dbg("after count");
     moe_expert_scatter(token_num, token_len, d_layer_input, d_mix_coeff, d_token_pos, d_routed_features,
                        d_routed_mix_coeff, stream);
+    dbg("after scatter");
 
     // 4. run each expert: state = sublayer.run(state)
     mSublayer->copyWeights(workspace, 0, mStreams[0]);
@@ -275,9 +309,15 @@ void MoELayerPlugin::serialize(void* buffer) const noexcept {
     memcpy(int64_buffer, mExpertCentroidsCPU.values, mExpertCentroidsCPU.count * sizeof(float));
 }
 
-void MoELayerPlugin::destroy() noexcept { delete this; }
+void MoELayerPlugin::destroy() noexcept {
+    dbg(this, "call destory");
+    // delete this;
+}
 
-IPluginV2* MoELayerPlugin::clone() const noexcept { return new MoELayerPlugin(*this); }
+IPluginV2* MoELayerPlugin::clone() const noexcept {
+    dbg("call clone");
+    return new MoELayerPlugin(*this);
+}
 
 void MoELayerPlugin::setPluginNamespace(const char* pluginNamespace) noexcept { mPluginNamespace = pluginNamespace; }
 
