@@ -163,7 +163,7 @@ size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
     return std::max(plugin_size, sublayer_size);
 }
 
-int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
+int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
                                 cudaStream_t stream) noexcept {
     // run the actual MoE calculation
     // 0. obtain all buffers
@@ -196,7 +196,7 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, const void* const* inputs, vo
     // 3. count & sort & gather (a.k.a. shuffle) tokens for each expert
     auto expert_offset = new int[mExpertCount + 1]();
     expert_offset[mExpertCount] = token_num;
-    moe_expert_count(token_num, d_gate_selection, d_token_pos, expert_offset, stream);
+    moe_expert_count(token_num, mExpertCount, d_gate_selection, d_token_pos, expert_offset, stream);
     moe_expert_scatter(token_num, token_len, d_layer_input, d_mix_coeff, d_token_pos, d_routed_features,
                        d_routed_mix_coeff, stream);
 

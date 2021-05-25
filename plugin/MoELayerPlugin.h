@@ -75,7 +75,7 @@ class MoELayerPlugin : public IPluginV2 {
     int32_t initialize() noexcept override;
     void terminate() noexcept override;
     size_t getWorkspaceSize(int32_t maxBatchSize) const noexcept override;
-    int32_t enqueue(int32_t batchSize, const void* const* inputs, void** outputs, void* workspace,
+    int32_t enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
                     cudaStream_t stream) noexcept override;
     size_t getSerializationSize() const noexcept override;
     void serialize(void* buffer) const noexcept override;

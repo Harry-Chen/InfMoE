@@ -18,6 +18,7 @@ void moe_expert_select(
 // count the tokens on each expert and obtain position for each token in routed_features
 void moe_expert_count(
     const int token_num,
+    const int expert_num,
     const int *d_gate_selection,
     int *d_token_pos,
     int *expert_offset,

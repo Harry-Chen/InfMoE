@@ -6,7 +6,7 @@
 #include <cstring>
 
 #include "MoELayerPlugin.h"
-
+#include "thirdparty/dbg.h"
 
 REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
 
@@ -39,13 +39,17 @@ const std::array<PluginField, 6> MoELayerPluginCreator::mPluginAttributes{
 const PluginFieldCollection MoELayerPluginCreator::mFC{MoELayerPluginCreator::mPluginAttributes.size(),
                                                        MoELayerPluginCreator::mPluginAttributes.data()};
 
-MoELayerPluginCreator::MoELayerPluginCreator() : mPluginNamespace("UNKNOWN") {}
+MoELayerPluginCreator::MoELayerPluginCreator() : mPluginNamespace("") {
+    dbg("initialize MoELayerPluginCreator");
+}
 
 MoELayerPluginCreator::~MoELayerPluginCreator() {}
 
 const PluginFieldCollection *MoELayerPluginCreator::getFieldNames() noexcept { return &mFC; }
 
 IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFieldCollection *fc) noexcept {
+
+    dbg("invoke createPlugin with name", name);
 
     int expert_count = -1;
     int hidden_size = -1;
@@ -93,6 +97,8 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     assert(expert_centroids.values != nullptr);
     assert(sublayer != nullptr);
 
+    dbg(expert_count, hidden_size, max_concurrency, expert_centroids.count, sublayer);
+
     struct stat64 weight_stat {};
     if (stat64(weight_file, &weight_stat) != 0) {
         perror("Cannot stat() weight file: ");
@@ -118,6 +124,7 @@ IPluginV2 *MoELayerPluginCreator::deserializePlugin(const char *name, const void
 
 void MoELayerPluginCreator::setPluginNamespace(const char *pluginNamespace) noexcept {
     mPluginNamespace = pluginNamespace;
+    dbg("set plugin namespace in creator", pluginNamespace);
 }
 
 const char *MoELayerPluginCreator::getPluginNamespace() const noexcept { return mPluginNamespace; }
