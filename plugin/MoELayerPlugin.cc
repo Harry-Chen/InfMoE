@@ -176,8 +176,8 @@ void MoELayerPlugin::terminate() noexcept {
 // They will not be simultaneously used, so we take the max of two space
 size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
     // the maximum tokens that might go to one single expert
-    // FIXME: hardcoded (as claimed in BASE Layer paper)
-    auto max_single_expert_token_count = static_cast<int32_t>(maxBatchSize * mSequenceLength / mExpertCount * 5);
+    // FIXME: currently set to full size
+    auto max_single_expert_token_count = static_cast<int32_t>(maxBatchSize * mSequenceLength);
     mSublayerWorkspacecSize = mSublayer->weightSize() + mSublayer->workspaceSize(max_single_expert_token_count);
     auto sublayer_size = mSublayerWorkspacecSize * mMaxConcurrency;
     // maximum tokens that might be processed by this layer
@@ -192,7 +192,7 @@ size_t MoELayerPlugin::getWorkspaceSize(int32_t maxBatchSize) const noexcept {
 
 int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
                                 cudaStream_t stream) noexcept {
-    dbg(batchSize);
+    // dbg(batchSize);
     // run the actual MoE calculation
     // 0. obtain all buffers
     auto token_num = batchSize * mSequenceLength;
@@ -209,6 +209,11 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
     auto d_routed_mix_coeff = d_mix_coeff + token_num;
     auto d_layer_output = static_cast<float*>(outputs[0]);
 
+    checkCudaPointer(d_layer_output);
+    checkCudaPointer(d_mix_coeff);
+    checkCudaPointer(d_post_expert_features);
+    checkCudaPointer(d_routed_features);
+
     // 1. calculate token-expert affiliation
     // (token_num, token_len) @ (token_len, expert_count)
     float alpha = 1.0, beta = 0.0;
@@ -217,7 +222,7 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
                                     d_expert_centroids, token_len, d_layer_input, token_len, &beta, d_token_expert_aff,
                                     mExpertCount));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
-    dbg("after affiliation");
+    // dbg("after affiliation");
 
     // showCudaArray(d_layer_input, token_num, token_len);
     // showArray(static_cast<const float*>(mExpertCentroidsCPU.values), mExpertCount, token_len);
@@ -226,17 +231,17 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
 
     // 2. get expert assignments (TODO: support multiple experts for each token)
     moe_expert_select(token_num, mExpertCount, d_token_expert_aff, d_gate_selection, d_mix_coeff, stream);
-    dbg("after select");
+    // dbg("after select");
     // showCudaArray(d_mix_coeff, 1, token_num);
 
     // 3. count & sort & gather (a.k.a. shuffle) tokens for each expert
     auto expert_offset = new int[mExpertCount + 1](), expert_count = new int[mExpertCount]();
     expert_offset[mExpertCount] = token_num;
     moe_expert_count(token_num, mExpertCount, d_gate_selection, d_token_pos, expert_count, expert_offset, stream);
-    dbg("after count");
+    // dbg("after count");
     moe_expert_scatter(token_num, token_len, d_layer_input, d_mix_coeff, d_token_pos, d_routed_features,
                        d_routed_mix_coeff, stream);
-    dbg("after scatter");
+    // dbg("after scatter");
     // showCudaArray(d_routed_features, token_num, token_len);
     // showCudaArray(d_routed_mix_coeff, 1, token_num);
 
@@ -246,7 +251,7 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
     assert(next_expert < mExpertCount);
 
     mSublayer->copyWeights(workspace, next_expert, mStreams[0]);
-    dbg("after first copy");
+    // dbg("after first copy");
 
     // i: expert index, j: expert (with non-empty features) index
     for (int i = next_expert, j = 0; i < mExpertCount; i = next_expert, j++) {
@@ -284,7 +289,7 @@ int32_t MoELayerPlugin::enqueue(int32_t batchSize, void const* const* inputs, vo
     // TODO: support dynamic switching method
     // 6. mix features before & after expert
     // 7. unshuffle results
-    dbg("before gather");
+    // dbg("before gather");
     // showCudaArray(d_post_expert_features, token_num, token_len);
     moe_expert_base_layer_fused_mix_and_gather(token_num, token_len, d_token_pos, d_routed_features,
                                                d_post_expert_features, d_routed_mix_coeff, d_layer_output, stream);

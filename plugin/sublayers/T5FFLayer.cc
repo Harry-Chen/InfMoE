@@ -52,7 +52,7 @@ size_t T5FFLayer::workspaceSize(int32_t tokenCount) {
 }
 
 void T5FFLayer::copyWeights(void *dst, int expert, cudaStream_t stream) {
-    dbg(expert);
+    // dbg(expert);
     // copy weight of specified expert to dst
     auto weight_ptr_byte = static_cast<char *>(dst);
 
@@ -67,14 +67,14 @@ void T5FFLayer::copyWeights(void *dst, int expert, cudaStream_t stream) {
     auto wi_0_weight_raw = (*mSavedWeights)[std::to_string(expert) + "/wi_0_weight"];
     assert(wi_0_weight_raw.num_bytes() == intermediateFFWeightSize());
     auto *wi_0_weight = reinterpret_cast<float *>(weight_ptr_byte + layernormWeightSize());
-    CUDA_SAFE_CALL(cudaMemcpyAsync(wi_0_weight, wi_0_weight_raw.data<float>(), layernormWeightSize(),
+    CUDA_SAFE_CALL(cudaMemcpyAsync(wi_0_weight, wi_0_weight_raw.data<float>(), intermediateFFWeightSize(),
                                    cudaMemcpyHostToDevice, stream));
 
     // wi_1_weight: hidden_size * d_model
     auto wi_1_weight_raw = (*mSavedWeights)[std::to_string(expert) + "/wi_1_weight"];
     assert(wi_1_weight_raw.num_bytes() == intermediateFFWeightSize());
     auto *wi_1_weight = reinterpret_cast<float *>(weight_ptr_byte + layernormWeightSize() + intermediateFFWeightSize());
-    CUDA_SAFE_CALL(cudaMemcpyAsync(wi_1_weight, wi_1_weight_raw.data<float>(), layernormWeightSize(),
+    CUDA_SAFE_CALL(cudaMemcpyAsync(wi_1_weight, wi_1_weight_raw.data<float>(), intermediateFFWeightSize(),
                                    cudaMemcpyHostToDevice, stream));
 
     // wo_weight: d_model * hidden_size
@@ -83,7 +83,7 @@ void T5FFLayer::copyWeights(void *dst, int expert, cudaStream_t stream) {
     auto *wo_weight =
         reinterpret_cast<float *>(weight_ptr_byte + layernormWeightSize() + intermediateFFWeightSize() * 2);
     CUDA_SAFE_CALL(
-        cudaMemcpyAsync(wo_weight, wo_weight_raw.data<float>(), layernormWeightSize(), cudaMemcpyHostToDevice, stream));
+        cudaMemcpyAsync(wo_weight, wo_weight_raw.data<float>(), intermediateFFWeightSize(), cudaMemcpyHostToDevice, stream));
 }
 
 bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
@@ -140,7 +140,8 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
 void T5FFLayer::initialize() {
     assert(*mCublasHandle != nullptr);
     // load all weights to CPU memory (WARNING: huge memory consumption!)
-    mSavedWeights = cnpy::npz_load(mWeightFile);    
+    mSavedWeights = cnpy::npz_load(mWeightFile);
+    dbg("weights loaded");
 }
 
 void T5FFLayer::terminate() {

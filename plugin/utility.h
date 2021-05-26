@@ -45,6 +45,11 @@ inline const char* cuBlasGetErrorString(cublasStatus_t err) {
     } \
 }
 
+inline void checkCudaPointer(void *ptr) {
+    cudaPointerAttributes attr;
+    CUDA_SAFE_CALL(cudaPointerGetAttributes(&attr, ptr));
+    assert(attr.type == cudaMemoryTypeDevice);
+}
 
 template <typename T>
 inline void showCudaArray(T *d_value, int m, int n) {

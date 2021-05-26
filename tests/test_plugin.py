@@ -4,6 +4,7 @@ import pytest
 import sys
 import os
 import ctypes
+import time
 import numpy as np
 import tensorrt as trt
 import pycuda.driver as cuda
@@ -34,14 +35,19 @@ class MoEConfig:
     def generate_weight_file(self) -> str:
         weight_path = '/tmp/moe_weight.npz'
         if os.path.isfile(weight_path):
-            os.remove(weight_path)
+            return weight_path
+            # os.remove(weight_path)
         weights = {}
+        print('Begin generate random weight')
+        layer_norm_weight = np.random.rand(self.embedding_size).astype('f')
+        w_weight = np.random.rand(self.hidden_size, self.embedding_size).astype('f')
+        print('End generate random weight')
         for i in range(self.expert_count):
-            weights[f'{i}/layer_norm_weight'] = np.random.rand(self.embedding_size).astype('f')
-            weights[f'{i}/wi_0_weight'] = np.random.rand(self.hidden_size, self.embedding_size).astype('f')
-            weights[f'{i}/wi_1_weight'] = np.random.rand(self.hidden_size, self.embedding_size).astype('f')
-            weights[f'{i}/wo_weight'] = np.random.rand(self.embedding_size, self.hidden_size).astype('f')
-        np.savez_compressed(weight_path, **weights)
+            weights[f'{i}/layer_norm_weight'] = layer_norm_weight
+            weights[f'{i}/wi_0_weight'] = w_weight
+            weights[f'{i}/wi_1_weight'] = w_weight
+            weights[f'{i}/wo_weight'] = w_weight.transpose()
+        np.savez(weight_path, **weights)
         return weight_path
 
 
@@ -68,7 +74,7 @@ def create_moe_layer_plugin(config: MoEConfig):
     # print(centroids)
     field_collection = generate_attributes(config, centroids, weight_file)
     plugin = creator.create_plugin("", field_collection=field_collection)
-    return plugin, centroids, weight_file
+    return plugin
 
 
 class HostDeviceMem(object):
@@ -106,11 +112,11 @@ def allocate_buffers(engine):
 def do_inference(context, bindings, inputs, outputs, stream, batch_size=1):
     # Transfer input data to the GPU.
     [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
-    print('before exec')
+    # print('before exec')
     # Run inference.
     context.execute_async(batch_size=batch_size, bindings=bindings, stream_handle=stream.handle)
     # Transfer predictions back from the GPU.
-    print('after exec')
+    # print('after exec')
     [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
     # Synchronize the stream
     stream.synchronize()
@@ -122,16 +128,18 @@ def test_moe_layer_plugin():
     # engine builder & config
     builder = trt.Builder(TRT_LOGGER) 
     config = builder.create_builder_config()
-    config.max_workspace_size = 1 << 34 # 16GB
+    config.max_workspace_size = int((1 << 35) * 1.5) # 16GB
 
     # network for builder
     network = builder.create_network()
-    moe_config = MoEConfig(16, 10, 16, 16, 2, "T5_FF", 20)
-    moe_plugin, centroids, _ = create_moe_layer_plugin(moe_config)
+    moe_config = MoEConfig(512, 20, 4096, 16384, 2, "T5_FF", 100)
+    moe_plugin = create_moe_layer_plugin(moe_config)
     input_layer = network.add_input(name="input_layer", dtype=trt.float32, shape=(moe_config.seq_len, moe_config.embedding_size))
     moe_layer = network.add_plugin_v2(inputs=[input_layer], plugin=moe_plugin)
-    moe_layer.get_output(0).name = "moe_output"
-    network.mark_output(moe_layer.get_output(0))
+    moe_layer_2 = network.add_plugin_v2(inputs=[moe_layer.get_output(0)], plugin=moe_plugin)
+    moe_layer.get_output(0).name = "moe_1_output"
+    moe_layer_2.get_output(0).name = "moe_2_output"
+    network.mark_output(moe_layer_2.get_output(0))
     builder.max_batch_size = moe_config.max_batch_size
 
     # build engine
@@ -142,8 +150,18 @@ def test_moe_layer_plugin():
         # print(layer_input @ centroids.transpose())
         # print(layer_input)
         np.copyto(inputs[0].host, layer_input.ravel())
-        [layer_output] = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=moe_config.max_batch_size)
+        [cuda.memcpy_htod_async(inp.device, inp.host, stream) for inp in inputs]
+        stream.synchronize()
+        start = time.time()
+        for i in range(1):
+            print('inference', i)
+            context.execute_async(batch_size=moe_config.max_batch_size, bindings=bindings, stream_handle=stream.handle)
+            # [_] = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=moe_config.max_batch_size)
         # print(layer_output)
+        end = time.time()
+        print((end - start) / 10 / moe_config.max_batch_size)
+        stream.synchronize()
+        [cuda.memcpy_dtoh_async(out.host, out.device, stream) for out in outputs]
 
 if __name__ == '__main__':
     test_moe_layer_plugin()

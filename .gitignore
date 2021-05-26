@@ -184,3 +184,6 @@ Thumbs.db #thumbnail cache on Windows
 
 .vscode/
 builddir/
+*.qdrep
+*.sqlite
+*.ncu-rep

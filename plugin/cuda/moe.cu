@@ -124,6 +124,21 @@ __global__ void fused_batch_mix_and_gather_kernel(
 }
 
 
+template <typename T, bool USE_WARP_SHFL>
+__global__ void expert_select_average_kernel(
+    const int token_num,
+    const int expert_num,
+    const T *token_expert_aff,
+    int *gate_selection,
+    T *expert_weight
+) {
+    static_assert(USE_WARP_SHFL == false);
+    int row_id = blockIdx.x * blockDim.x + threadIdx.x;
+    gate_selection[row_id] = row_id % expert_num;
+    expert_weight[row_id] = 0.5;
+}
+
+
 }; // unnamed namespace
 
 void moe_expert_select(
@@ -134,7 +149,7 @@ void moe_expert_select(
     float *d_expert_weight,
     cudaStream_t stream
 ) {
-    expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
+    expert_select_average_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
         token_num, expert_num, d_token_expert_aff, d_gate_selection, d_expert_weight
     );
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
@@ -157,7 +172,7 @@ void moe_expert_count(
     ));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
-    dbg("before sort");
+    // dbg("before sort");
     // run counting sorting on CPU
     for (int i = 0; i < token_num; ++i) {
         expert_count[gate_selection[i]]++;
@@ -166,8 +181,8 @@ void moe_expert_count(
     for (int i = 1; i < expert_num; ++i) {
         expert_offset[i] = expert_offset[i - 1] + expert_count[i - 1];
     }
-    dbg("expert_count");
-    showArray(expert_count, 1, expert_num);
+    // dbg("expert_count");
+    // showArray(expert_count, 1, expert_num);
     // dbg("expert_offset");
     // showArray(expert_offset, 1, expert_num);
     // use expert_pos to fill token_pos

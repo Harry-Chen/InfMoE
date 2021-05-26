@@ -7,7 +7,9 @@ project(
       'cpp_std=c++17',
     ]
 )
-add_global_arguments('-Wno-deprecated-declarations', language : 'cpp')
+
+add_project_arguments('-std=c++17', language : 'cuda')
+add_project_arguments('-Wno-deprecated-declarations', language : 'cpp')
 
 cxx = meson.get_compiler('cpp')
 so_ext = 'so'
@@ -15,6 +17,13 @@ so_ext = 'so'
 # read prefix location
 cudnn_prefix = get_option('WITH_CUDNN')
 tensorrt_prefix = get_option('WITH_TENSORRT')
+
+if get_option('buildtype').startswith('debug')
+  add_project_arguments(['-DDEBUG', '-DDBG_MACRO_NO_WARNING'], language : ['cpp', 'cuda'])
+else
+  add_project_arguments(['-DNO_DEBUG', '-DDBG_MACRO_NO_WARNING', '-DDBG_MACRO_DISABLE'], language : ['cpp', 'cuda'])
+endif
+
 
 # find libraries
 cuda_dep = dependency('cuda', version : '>=10', modules : ['cublas'])
