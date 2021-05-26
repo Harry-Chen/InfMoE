@@ -53,7 +53,7 @@ plugin_sources = [
 
 # build library
 shared_library(
-    'moelayer',
+    'trtmoelayer',
     plugin_sources,
     include_directories: external_inc,
     dependencies: [cuda_dep, cudnn_dep, nvinfer_dep, zlib_dep],

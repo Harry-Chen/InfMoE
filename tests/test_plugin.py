@@ -14,7 +14,7 @@ from dataclasses import dataclass
 
 MOE_LAYER_PLUGIN_PATH = os.path.join(
     os.path.dirname(os.path.realpath(__file__)),
-    '../plugin/builddir/libmoelayer.so'
+    '../plugin/builddir/libtrtmoelayer.so'
 )
 
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)

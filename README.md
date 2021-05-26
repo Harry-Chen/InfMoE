@@ -29,6 +29,15 @@ ninja -C builddir # or just run `make`
 
 If everything goes well, you can find `libmoelayer.so` in `builddir`.
 
+## Usage
+
+To use TensorRT in Python, you need to install:
+
+* TensorRT pip package (see <https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip>)
+* PyCUDA
+
+Note: If you install `nvidia-tensorrt` from PyPI (but not from downloaded TensorRT package), you **MUST** ensure the version of TensorRT that `MoELayerPlugin` links to matches the version that pip package uses (see `site-packages/tensorrt/`). Otherwise the plugin will not work correctly.
+
 ## Plugin attributes
 
 When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the following attributes must be specified:

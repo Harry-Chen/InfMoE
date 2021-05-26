@@ -11,6 +11,7 @@ endif
 DEBUG ?= true
 TENSORRT_PREFIX ?= /usr
 CUDNN_PREFIX ?= /usr
+BUILDDIR ?= builddir
 
 ifeq (${DEBUG}, true)
 	BUILDTYPE = debugoptimized
@@ -20,14 +21,14 @@ endif
 
 all: compile
 
-builddir:
-	meson setup builddir -DWITH_TENSORRT=${TENSORRT_PREFIX} -DWITH_CUDNN=${CUDNN_PREFIX} --buildtype ${BUILDTYPE}
+${BUILDDIR}:
+	meson setup "${BUILDDIR}" -DWITH_TENSORRT=${TENSORRT_PREFIX} -DWITH_CUDNN=${CUDNN_PREFIX} --buildtype ${BUILDTYPE}
 
-compile: builddir
-	ninja -C builddir
+compile: ${BUILDDIR}
+	ninja -C "${BUILDDIR}"
 
 clean:
-	ninja -C builddir clean
+	ninja -C "${BUILDDIR}" clean
 
 distclean:
-	rm -rf builddir
+	rm -rf "${BUILDDIR}"
