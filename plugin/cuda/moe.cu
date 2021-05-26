@@ -1,6 +1,8 @@
-#include "moe.h"
-
+#include <cstdio>
+#include <cfloat>
 #include <cuda_runtime.h>
+
+#include "moe.h"
 
 #include "../utility.h"
 #include "../thirdparty/dbg.h"
@@ -11,34 +13,34 @@ namespace {
 template <typename T, bool USE_WARP_SHFL>
 __global__ void expert_select_top1_kernel(
     const int token_num,
-    const int token_len,
+    const int expert_num,
     const T *token_expert_aff,
     int *gate_selection,
     T *expert_weight
 ) {
-    int row_id = (blockIdx.x * blockDim.x + threadIdx.x);
-    if (USE_WARP_SHFL) row_id /= WARP_SIZE;
-    if (row_id > token_num) return;
+    int row_id = blockIdx.x * blockDim.x + threadIdx.x;
+    if constexpr (USE_WARP_SHFL) row_id /= WARP_SIZE;
+    if (row_id >= token_num) return;
 
-    const T *row_ptr = token_expert_aff + token_len * row_id;
-    T row_max = 0;
+    const T *row_ptr = token_expert_aff + expert_num * row_id;
+    T row_max = -FLT_MAX;
     int row_max_pos = -1;
 
     if constexpr (USE_WARP_SHFL) {
         const int warp_offset = threadIdx.x % WARP_SIZE;
         // use one warp for each row
-        for (int i = 0; i < token_len; i += WARP_SIZE) {
+        for (int i = 0; i < expert_num; i += WARP_SIZE) {
             // obtain max of 32 numbers
-            T data = 0; // default invalid value
-            int token_offset = i + warp_offset;
-            if (token_offset < token_len) data = row_ptr[token_offset];
+            T data = -FLT_MAX; // default invalid value
+            int expert_offset = i + warp_offset;
+            if (expert_offset < expert_num) data = row_ptr[expert_offset];
             // warp shuffle for max & pos
-            T local_max = data;
-            int local_max_pos = token_offset;
+            auto local_max = data;
+            int local_max_pos = expert_offset;
     #pragma unroll
             for (int i = 16; i > 0; i >>= 1) {
-                T higher_lane_max = __shfl_down_sync(0xFFFFFFFF, local_max, i);
-                T higher_lane_max_pos = __shfl_down_sync(0xFFFFFFFF, local_max_pos, i);
+                auto higher_lane_max = __shfl_down_sync(0xFFFFFFFF, local_max, i);
+                auto higher_lane_max_pos = __shfl_down_sync(0xFFFFFFFF, local_max_pos, i);
                 if (higher_lane_max > local_max) {
                     local_max = higher_lane_max;
                     local_max_pos = higher_lane_max_pos;
@@ -57,13 +59,14 @@ __global__ void expert_select_top1_kernel(
         }
     } else {
         // use one thread for each row
-        for (int i = 0; i < token_len; ++i) {
-            float data = row_ptr[i];
+        for (int i = 0; i < expert_num; ++i) {
+            auto data = row_ptr[i];
             if (data > row_max) {
                 row_max = data;
                 row_max_pos = i;
             }
         }
+        // printf("setting selection[%d] = %d (%f)\n", row_id, row_max_pos, row_max);
         gate_selection[row_id] = row_max_pos;
         if (expert_weight != nullptr) expert_weight[row_id] = row_max;
     }
@@ -108,14 +111,14 @@ __global__ void batch_scatter_feature_and_weight_kernel(
 
 template <typename T, typename U>
 __global__ void fused_batch_mix_and_gather_kernel(
-    size_t token_num, const int *pos, const U *mix_coeff, const T *inbuf1, const T *inbuf2, T *oubuf
+    size_t token_len, const int *pos, const U *mix_coeff, const T *inbuf1, const T *inbuf2, T *oubuf
 ) { 
     int token_offset = blockIdx.x;
     U alpha = sigmoid(mix_coeff[token_offset]);
-	inbuf1 += token_num * token_offset;
-    inbuf2 += token_num * token_offset;
-	oubuf += token_num * pos[token_offset];
-	for (int i = threadIdx.x; i < token_num; i += blockDim.x) {
+	inbuf1 += token_len * token_offset;
+    inbuf2 += token_len * token_offset;
+	oubuf += token_len * pos[token_offset];
+	for (int i = threadIdx.x; i < token_len; i += blockDim.x) {
 		oubuf[i] = alpha * inbuf1[i] + (1 - alpha) * inbuf2[i];
 	}
 }
@@ -125,19 +128,16 @@ __global__ void fused_batch_mix_and_gather_kernel(
 
 void moe_expert_select(
     const int token_num,
-    const int token_len,
+    const int expert_num,
     const float *d_token_expert_aff,
     int *d_gate_selection,
     float *d_expert_weight,
     cudaStream_t stream
 ) {
-    dbg("before kernel");
     expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
-        token_num, token_len, d_token_expert_aff, d_gate_selection, d_expert_weight
+        token_num, expert_num, d_token_expert_aff, d_gate_selection, d_expert_weight
     );
-    dbg("after kernel");
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
-    dbg("after sync");
 }
 
 void moe_expert_count(
@@ -145,19 +145,17 @@ void moe_expert_count(
     const int expert_num,
     const int *d_gate_selection,
     int *d_token_pos,
+    int *expert_count,
     int *expert_offset,
     cudaStream_t stream
 ) {
     auto gate_selection = new int[token_num];
     auto token_pos = new int[token_num];
-    auto expert_count = new int[expert_num];
 
-    dbg("before copy");
     CUDA_SAFE_CALL(cudaMemcpyAsync(
         gate_selection, d_gate_selection, token_num * sizeof(int), cudaMemcpyDeviceToHost, stream
     ));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
-    dbg("after copy");
 
     dbg("before sort");
     // run counting sorting on CPU
@@ -168,17 +166,25 @@ void moe_expert_count(
     for (int i = 1; i < expert_num; ++i) {
         expert_offset[i] = expert_offset[i - 1] + expert_count[i - 1];
     }
-    // use expert_count to fill
-    memcpy(expert_count, expert_offset, sizeof(int) * expert_num);
+    dbg("expert_count");
+    showArray(expert_count, 1, expert_num);
+    // dbg("expert_offset");
+    // showArray(expert_offset, 1, expert_num);
+    // use expert_pos to fill token_pos
+    auto expert_pos = new int[expert_num];
+    memcpy(expert_pos, expert_offset, sizeof(int) * expert_num);
     for (int i = 0; i < token_num; ++i) {
-        token_pos[expert_count[gate_selection[i]]++] = i;
+        token_pos[expert_pos[gate_selection[i]]++] = i;
     }
-    dbg("after sort");
+    // dbg("expert_pos");
+    // showArray(expert_pos, 1, expert_num);
+    // dbg("token_pos");
+    // showArray(token_pos, 1, token_num);
 
     // copy back to GPU
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_token_pos, token_pos, token_num * sizeof(int), cudaMemcpyHostToDevice, stream));
     delete[] gate_selection;
-    delete[] expert_count;
+    delete[] expert_pos;
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
     delete[] token_pos;
 }

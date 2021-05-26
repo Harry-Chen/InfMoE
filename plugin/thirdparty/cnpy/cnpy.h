@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "../../utility.h"
+#include "../dbg.h"
 
 namespace cnpy {
 
@@ -30,7 +31,7 @@ struct CudaHostMemory {
     CudaHostMemory(size_t size) : mSize(size) { CUDA_SAFE_CALL(cudaHostAlloc(&mData, size, cudaHostAllocDefault)); }
     ~CudaHostMemory() { CUDA_SAFE_CALL(cudaFreeHost(mData)); }
     size_t size() { return mSize; }
-    void *data() { return mData; }
+    void* data() { return mData; }
 
    private:
     size_t mSize;

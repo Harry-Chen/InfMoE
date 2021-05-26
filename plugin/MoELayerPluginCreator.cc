@@ -5,6 +5,7 @@
 #include <cstdio>
 #include <cstring>
 
+#include "utility.h"
 #include "MoELayerPlugin.h"
 #include "thirdparty/dbg.h"
 
@@ -75,6 +76,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
             assert(field.length > 0 && field.data != nullptr);
             auto centroids = new float[field.length];
             memcpy(centroids, field.data, field.length * sizeof(float));
+            // showArray(static_cast<const float*>(centroids), expert_count, field.length / expert_count);
             expert_centroids.type = DataType::kFLOAT;
             expert_centroids.count = field.length;
             expert_centroids.values = centroids;

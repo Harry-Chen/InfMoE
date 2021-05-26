@@ -8,7 +8,7 @@
 // select expert index & weight for each token
 void moe_expert_select(
     const int token_num,
-    const int token_len,
+    const int expert_num,
     const float *d_token_expert_aff,
     int *d_gate_selection,
     float *d_expert_weight,
@@ -21,6 +21,7 @@ void moe_expert_count(
     const int expert_num,
     const int *d_gate_selection,
     int *d_token_pos,
+    int *expert_count,
     int *expert_offset,
     cudaStream_t stream
 );

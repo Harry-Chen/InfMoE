@@ -34,6 +34,8 @@ Dims T5FFLayer::getOutputDimensions(int32_t index, const Dims *inputs, int32_t n
     assert(index == 0);
     assert(nbInputDims == 1);
     // output tensor should have the same shape with input tensor
+    dbg(inputs[0].nbDims);
+    dbg(inputs[0].d[0], inputs[0].d[1]);
     return inputs[0];
 }
 
@@ -50,6 +52,7 @@ size_t T5FFLayer::workspaceSize(int32_t tokenCount) {
 }
 
 void T5FFLayer::copyWeights(void *dst, int expert, cudaStream_t stream) {
+    dbg(expert);
     // copy weight of specified expert to dst
     auto weight_ptr_byte = static_cast<char *>(dst);
 
@@ -107,7 +110,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
     auto *wi_0_weight = reinterpret_cast<const float *>(weight_ptr_byte + layernormWeightSize());
     auto *wi_0_output = reinterpret_cast<float *>(workspace_ptr_byte + layernormOutputSize(tokenCount));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(*mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mHiddenSize, tokenCount, mEmbeddingSize,
-                                    &alpha, wi_0_weight, mEmbeddingSize, layernorm_output, tokenCount, &beta,
+                                    &alpha, wi_0_weight, mEmbeddingSize, layernorm_output, mEmbeddingSize, &beta,
                                     wi_0_output, mHiddenSize));
     // wi_1_o = ln_output @ wi_1^T
     auto *wi_1_weight =
@@ -115,7 +118,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
     auto *wi_1_output = reinterpret_cast<float *>(workspace_ptr_byte + layernormOutputSize(tokenCount) +
                                                   intermediateFFOutputSize(tokenCount));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(*mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mHiddenSize, tokenCount, mEmbeddingSize,
-                                    &alpha, wi_1_weight, mEmbeddingSize, layernorm_output, tokenCount, &beta,
+                                    &alpha, wi_1_weight, mEmbeddingSize, layernorm_output, mEmbeddingSize, &beta,
                                     wi_1_output, mHiddenSize));
     // wi_1_o = gelu(wi_0_o) * wi_1_o
     fused_gelu_dot_kernel(wi_0_output, wi_1_output, tokenCount * mHiddenSize, stream);
@@ -137,7 +140,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
 void T5FFLayer::initialize() {
     assert(*mCublasHandle != nullptr);
     // load all weights to CPU memory (WARNING: huge memory consumption!)
-    mSavedWeights = cnpy::npz_load(mWeightFile);
+    mSavedWeights = cnpy::npz_load(mWeightFile);    
 }
 
 void T5FFLayer::terminate() {

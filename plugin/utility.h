@@ -3,6 +3,7 @@
 #ifndef UTILITY_H
 #define UTILITY_H
 
+#include <iostream>
 #include <cstdio>
 #include <cassert>
 #include <cuda_runtime.h>
@@ -44,6 +45,29 @@ inline const char* cuBlasGetErrorString(cublasStatus_t err) {
     } \
 }
 
+
+template <typename T>
+inline void showCudaArray(T *d_value, int m, int n) {
+    auto temp = new std::remove_cv_t<T>[m * n]();
+    CUDA_SAFE_CALL(cudaMemcpy(temp, d_value, sizeof(T) * m * n, cudaMemcpyDeviceToHost));
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) {
+            std::cout << temp[i * n + j];
+            std::cout << ((j == n - 1) ? '\n' : ' ');
+        }
+    }
+    delete temp;
+}
+
+template <typename T>
+inline void showArray(T *value, int m, int n) {
+    for (int i = 0; i < m; ++i) {
+        for (int j = 0; j < n; ++j) {
+            std::cout << value[i * n + j];
+            std::cout << ((j == n - 1) ? '\n' : ' ');
+        }
+    }
+}
 
 
 #endif // UTILITY_H
