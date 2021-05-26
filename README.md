@@ -1,7 +1,7 @@
 # moe-infer
 
-Inference framework for MoE-based Transformer models, based on TensorRT a custom plugin
-named `MoELayerPlugin` that can run inference on a MoE layer with any sub-layer.
+Inference framework for MoE-based Transformer models, based on a TensorRT custom plugin
+named `MoELayerPlugin` (including Python binding) that can run inference on a MoE layer with any sub-layer.
 
 ## Building
 
@@ -13,7 +13,32 @@ Dependencies:
 * zlib (to read `npz` files)
 * meson & ninja (building system)
 
-Build commands:
+### Python (recommended)
+
+To use TensorRT in Python, you need to first install:
+
+* TensorRT pip package (see <https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip>)
+* PyCUDA
+
+Note: If you install `nvidia-tensorrt` from PyPI (but not from downloaded TensorRT package), you **MUST** ensure the version of TensorRT that `MoELayerPlugin` links to matches the version that pip package uses (see `site-packages/tensorrt/`). Otherwise the plugin will not work correctly.
+
+Then build this plugin:
+
+```bash
+cd python
+
+# if you have cuDNN & TensorRT installed in search path, or
+python3 setup.py build_ext
+# if you need to specify CUDA / cuDNN install location
+# (CUDA can only be automatically searched by meson)
+python3 setup.py build_ext --tensorrt-prefix=/path/to/tensorrt --cudnn-prefix=/path/to/cudnn
+
+python3 setup.py install .
+```
+
+You can also use `bdist_wheel` or other commands provided by `setuptools`.
+
+### C++ only (advanced)
 
 ```bash
 cd plugin
@@ -27,16 +52,7 @@ meson setup build -DWITH_TENSORRT=/path/to/tensorrt -DWITH_CUDNN=/path/to/cudnn
 ninja -C builddir # or just run `make`
 ```
 
-If everything goes well, you can find `libmoelayer.so` in `builddir`.
-
-## Usage
-
-To use TensorRT in Python, you need to install:
-
-* TensorRT pip package (see <https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip>)
-* PyCUDA
-
-Note: If you install `nvidia-tensorrt` from PyPI (but not from downloaded TensorRT package), you **MUST** ensure the version of TensorRT that `MoELayerPlugin` links to matches the version that pip package uses (see `site-packages/tensorrt/`). Otherwise the plugin will not work correctly.
+If everything goes well, you can find `libtrtmoelayer.so` in `builddir`.
 
 ## Plugin attributes
 
@@ -48,6 +64,10 @@ When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the follo
 * `expert_centroids`: FLOAT32 array, weight for dispatching tokens to experts, must be shape `(d_model, expert_count)` where `d_model` is the last dimension of input tensor (a.k.a. embedding size)
 * `expert_weight_file`: null-terminated char pointer, path to expert weight file, to be read by implmentation of sub-layer
 * `expert_sublayer_type`: type of sub-layer used, currently only `T5_FF` can be used
+
+## Usage
+
+TBD
 
 ## Scheduling
 

@@ -5,6 +5,7 @@ import os
 cxx_flags = []
 ext_libs = []
 
+
 class build_ext(distutils.cmd.Command):
 
     tensorrt_prefix: str
@@ -16,6 +17,7 @@ class build_ext(distutils.cmd.Command):
         ('cudnn-prefix=', None, 'cuDNN location'),
         ('debug', 'd', 'enable debug output')
     ]
+
     def initialize_options(self):
         self.tensorrt_prefix = '/usr'
         self.cudnn_prefix = '/usr'
@@ -24,13 +26,17 @@ class build_ext(distutils.cmd.Command):
     def finalize_options(self):
         self.debug = self.debug == 1
         if not os.path.isdir(self.tensorrt_prefix):
-            raise Exception(f'TensorRT prefix does not exist: {self.tensorrt_prefix}')
+            raise Exception(
+                f'TensorRT prefix does not exist: {self.tensorrt_prefix}')
         if not os.path.isfile(os.path.join(self.tensorrt_prefix, 'include', 'NvInfer.h')):
-            raise Exception(f'Cannot find NvInfer.h in TensorRT prefix: {self.tensorrt_prefix}')
+            raise Exception(
+                f'Cannot find NvInfer.h in TensorRT prefix: {self.tensorrt_prefix}')
         if not os.path.isdir(self.cudnn_prefix):
-            raise Exception(f'cuDNN prefix does not exist: {self.cudnn_prefix}')
+            raise Exception(
+                f'cuDNN prefix does not exist: {self.cudnn_prefix}')
         if not os.path.isfile(os.path.join(self.cudnn_prefix, 'include', 'cudnn.h')):
-            raise Exception(f'Cannot find cudnn.h in cuDNN prefix: {self.cudnn_prefix}')
+            raise Exception(
+                f'Cannot find cudnn.h in cuDNN prefix: {self.cudnn_prefix}')
 
     def run(self):
         import os
@@ -64,7 +70,10 @@ if __name__ == '__main__':
         license='Apache-2',
         url='https://github.com/Harry-Chen/trt-moe',
         packages=['trt_moe'],
-        ext_modules=[],
         cmdclass={
             'build_ext': build_ext
-        })
+        },
+        package_data={
+            'trt_moe': ['libtrtmoelayer.so'],
+        },
+    )
