@@ -46,10 +46,13 @@ inline const char* cuBlasGetErrorString(cublasStatus_t err) {
     } \
 }
 
-inline void checkCudaPointer(void *ptr) {
-    cudaPointerAttributes attr;
-    CUDA_SAFE_CALL(cudaPointerGetAttributes(&attr, ptr));
-    assert(attr.type == cudaMemoryTypeDevice);
+#define CHECK_CUDA_POINTER(ptr) if constexpr (DEBUG) { \
+    cudaPointerAttributes attr; \
+    CUDA_SAFE_CALL(cudaPointerGetAttributes(&attr, ptr)); \
+    if (attr.type != cudaMemoryTypeDevice) { \
+        fprintf(stderr, "Wrong CUDA pointer %s type: %d\n", #ptr, attr.type); \
+        assert(false); \
+    } \
 }
 
 template <typename T>

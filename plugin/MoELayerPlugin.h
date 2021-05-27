@@ -6,6 +6,7 @@
 #include <NvInferPlugin.h>
 #include <cublas_v2.h>
 
+#include <memory>
 #include <array>
 
 #include "sublayers/SubLayer.h"
@@ -22,15 +23,14 @@ static const char* MOE_LAYER_PLUGIN_NAME{"MoELayerPlugin"};
 namespace sublayer_type {
 static const char* T5FF{"T5_FF"};
 static const char* Identity{"Identity"};
-}
+}  // namespace sublayer_type
 
-class MoELayerPlugin : public IPluginV2 {
+class MoELayerPlugin : public IPluginV2DynamicExt  {
 
    private:
     // TensorRT / CUDA related
     const char* mLayerName = nullptr;
     const char* mPluginNamespace = nullptr;
-    int mMaxBatchSize = -1;
     cublasHandle_t mCublasHandle = nullptr;
     cudaStream_t* mStreams = nullptr;
 
@@ -38,18 +38,20 @@ class MoELayerPlugin : public IPluginV2 {
     int mExpertCount;
     int mHiddenSize;
     int mMaxConcurrency;  // maximum number of sublayers on GPU memory
-    Weights mExpertCentroidsCPU, mExpertCentroidsGPU;
+    Weights mExpertCentroidsCPU{}, mExpertCentroidsGPU{};
     const char *mExpertWeightFile, *mSublayerType;
 
     // sublayer related
-    MoESubLayer* mSublayer = nullptr;
+    std::shared_ptr<MoESubLayer> mSublayer = nullptr;
     mutable size_t mSublayerWorkspacecSize;
 
     // inferred from network
     int mEmbeddingSize = -1;
     int mSequenceLength = -1;
-    void initializeGPUCentroids();
+    void ensureGPUCentroids();
+    void ensureSublayerWorkspaceSize(size_t tokenCount) const;
     void createSublayer();
+    void ensureCUDAContext();
     constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) +
                                                     sizeof(mMaxConcurrency) + sizeof(mExpertCentroidsCPU.count) +
                                                     sizeof(int) * 2;
@@ -69,21 +71,45 @@ class MoELayerPlugin : public IPluginV2 {
     const char* getPluginVersion() const noexcept override { return ::MOE_LAYER_PLUGIN_VERSION; }
     int32_t getNbOutputs() const noexcept override { return 1; }
     // implemented in .cc file
-    Dims getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) noexcept override;
-    bool supportsFormat(DataType type, PluginFormat format) const noexcept override;
-    void configureWithFormat(const Dims* inputDims, int32_t nbInputs, const Dims* outputDims, int32_t nbOutputs,
-                             DataType type, PluginFormat format, int32_t maxBatchSize) noexcept override;
+    // IPluginV2
+    // Dims getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) noexcept override;
+    // bool supportsFormat(DataType type, PluginFormat format) const noexcept override;
+    // void configureWithFormat(const Dims* inputDims, int32_t nbInputs, const Dims* outputDims, int32_t nbOutputs,
+    //                          DataType type, PluginFormat format, int32_t maxBatchSize) noexcept override;
     int32_t initialize() noexcept override;
     void terminate() noexcept override;
-    size_t getWorkspaceSize(int32_t maxBatchSize) const noexcept override;
-    int32_t enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
-                    cudaStream_t stream) noexcept override;
+    // size_t getWorkspaceSize(int32_t maxBatchSize) const noexcept override;
+    // int32_t enqueue(int32_t batchSize, void const* const* inputs, void* const* outputs, void* workspace,
+    //                 cudaStream_t stream) noexcept override;
     size_t getSerializationSize() const noexcept override;
     void serialize(void* buffer) const noexcept override;
     void destroy() noexcept override;
-    IPluginV2* clone() const noexcept override;
+    IPluginV2DynamicExt* clone() const noexcept override;
     void setPluginNamespace(const char* pluginNamespace) noexcept override;
     const char* getPluginNamespace() const noexcept override;
+    // IPluginV2Ext
+    nvinfer1::DataType getOutputDataType(int32_t index, nvinfer1::DataType const* inputTypes,
+                                         int32_t nbInputs) const noexcept override;
+    void attachToContext(cudnnContext* /*cudnn*/, cublasContext* /*cublas*/, IGpuAllocator* /*allocator*/) noexcept override;
+    void detachFromContext() noexcept override;
+    // bool isOutputBroadcastAcrossBatch(int32_t outputIndex, bool const* inputIsBroadcasted,
+    //                                   int32_t nbInputs) const noexcept override;
+    // bool canBroadcastInputAcrossBatch(int32_t inputIndex) const noexcept override;
+    // void configurePlugin(Dims const* inputDims, int32_t nbInputs, Dims const* outputDims, int32_t nbOutputs,
+    //                      DataType const* inputTypes, DataType const* outputTypes, bool const* inputIsBroadcast,
+    //                      bool const* outputIsBroadcast, PluginFormat floatFormat,
+    //                      int32_t maxBatchSize) noexcept override;
+    // IPluginV2DynamicExt
+    DimsExprs getOutputDimensions(
+        int32_t outputIndex, const DimsExprs* inputs, int32_t nbInputs, IExprBuilder& exprBuilder) noexcept override;
+    bool supportsFormatCombination(
+        int32_t pos, const PluginTensorDesc* inOut, int32_t nbInputs, int32_t nbOutputs) noexcept override;
+    void configurePlugin(const DynamicPluginTensorDesc* in, int32_t nbInputs,
+        const DynamicPluginTensorDesc* out, int32_t nbOutputs) noexcept override;
+    size_t getWorkspaceSize(const PluginTensorDesc* inputs, int32_t nbInputs, const PluginTensorDesc* outputs,
+        int32_t nbOutputs) const noexcept override;
+    int32_t enqueue(const PluginTensorDesc* inputDesc, const PluginTensorDesc* outputDesc,
+        const void* const* inputs, void* const* outputs, void* workspace, cudaStream_t stream) noexcept override;
 };
 
 class MoELayerPluginCreator : public IPluginCreator {

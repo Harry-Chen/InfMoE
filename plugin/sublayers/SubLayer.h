@@ -12,6 +12,8 @@
 
 using nvinfer1::Dims;
 using nvinfer1::Weights;
+using nvinfer1::DimsExprs;
+using nvinfer1::IExprBuilder;
 
 class MoESubLayer {
    protected:
@@ -19,21 +21,20 @@ class MoESubLayer {
     int mHiddenSize;
     int mMaxConcurrency;
     const char *mWeightFile;
-    cublasHandle_t *mCublasHandle = nullptr;  // passed by MoELayerPlugin
+    cublasHandle_t mCublasHandle = nullptr;  // passed by MoELayerPlugin
 
    public:
-    explicit MoESubLayer(int expertCount, int hiddenSize, const char *weightFile, int maxConcurrency,
-                         cublasHandle_t *cublasHandle)
+    explicit MoESubLayer(int expertCount, int hiddenSize, const char *weightFile, int maxConcurrency)
         : mExpertCount(expertCount),
           mHiddenSize(hiddenSize),
           mMaxConcurrency(maxConcurrency),
-          mWeightFile(weightFile),
-          mCublasHandle(cublasHandle){};
+          mWeightFile(weightFile) {};
+    void setCuBlasHandle(cublasHandle_t handle) { mCublasHandle = handle; }
     virtual ~MoESubLayer(){};
     virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) = 0;
     virtual size_t weightSize() = 0;
     virtual size_t workspaceSize(int32_t tokenCount) = 0;
-    virtual Dims getOutputDimensions(int32_t index, const Dims *inputs, int32_t nbInputDims) = 0;
+    virtual DimsExprs getOutputDimensions(const DimsExprs* inputs, IExprBuilder& exprBuilder) = 0;
     virtual void copyWeights(void *dst, int expert, cudaStream_t stream) = 0;
     virtual bool run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
                      cudaStream_t stream) = 0;

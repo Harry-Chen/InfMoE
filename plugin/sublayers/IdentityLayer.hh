@@ -12,7 +12,7 @@ class IdentityLayer : public MoESubLayer {
     int mEmbeddingSize;
 
    public:
-    explicit IdentityLayer() : MoESubLayer(0, 0, nullptr, 0, nullptr) {}
+    explicit IdentityLayer() : MoESubLayer(0, 0, nullptr, 0) {}
     virtual ~IdentityLayer() override {}
     virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims,
                                      int32_t nbOutputs) override {
@@ -23,8 +23,7 @@ class IdentityLayer : public MoESubLayer {
     }
     virtual size_t weightSize() override { return 0; }
     virtual size_t workspaceSize(int32_t tokenCount) override { return 0; }
-    virtual Dims getOutputDimensions(int32_t index, const Dims *inputs, int32_t nbInputDims) override {
-        assert(index == 0 && nbInputDims == 1);
+    virtual DimsExprs getOutputDimensions(const DimsExprs* inputs, IExprBuilder& exprBuilder) override {
         return inputs[0];
     }
     virtual void copyWeights(void *dst, int expert, cudaStream_t stream) override { return; }

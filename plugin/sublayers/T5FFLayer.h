@@ -36,7 +36,7 @@ class T5FFLayer : public MoESubLayer {
     virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) override;
     virtual size_t weightSize() override;
     virtual size_t workspaceSize(int32_t tokenCount) override;
-    virtual Dims getOutputDimensions(int32_t index, const Dims* inputs, int32_t nbInputDims) override;
+    virtual DimsExprs getOutputDimensions(const DimsExprs* inputs, IExprBuilder& exprBuilder) override;
     virtual void copyWeights(void *dst, int expert, cudaStream_t stream) override;
     virtual bool run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
                      cudaStream_t stream) override;
