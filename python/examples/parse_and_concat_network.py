@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
 
+import os
 import time
 import numpy as np
 import tensorrt as trt
-import pycuda.autoinit # DO NOT REMOVE!
+import pycuda.autoinit  # DO NOT REMOVE!
 
 from common import TRT_LOGGER, create_moe_config_with_random_weight
 from trt_moe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
+
+
+# contains a naive MLP network as described in 'generate_onnx.py'
+DEMO_FILE_NAME = 'naive_model.onnx'
 
 
 def parse_oonx_network(network, filename):
@@ -14,29 +19,45 @@ def parse_oonx_network(network, filename):
     onnx_parser.parse_from_file(filename)
     assert onnx_parser.get_error(0) is None
     # show layers in onnx
-    for i in range(24):
+    print('Layers in ONNX file:')
+    i = 0
+    while True:
         layer = network.get_layer(i)
-        print(layer.name, layer.type)
+        if layer is None:
+            break
+        print('Name:', layer.name, 'Type:', layer.type)
         input, output = layer.get_input(0), layer.get_output(0)
-        print(input.shape if input is not None else 'NONE', output.shape if output is not None else 'NONE')
+        print('Input:', input.shape if input is not None else 'NONE',
+              'Output:', output.shape if output is not None else 'NONE')
+        i += 1
 
 
 def create_moe_plugin() -> MoELayerPlugin:
-    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight_small.npz', 8, 2, 4, 8, 2, "T5_FF", 10)
+    moe_config = create_moe_config_with_random_weight(
+        '/tmp/moe_weight_small.npz', 8, 2, 4, 8, 2, "T5_FF", 10)
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)
     moe_plugin = moe_plugin_class.create_plugin()
     return moe_plugin_class, moe_plugin
 
+
 def run_concatenated_network():
+
+    if not os.path.isfile(DEMO_FILE_NAME):
+        raise Exception(
+            f'{DEMO_FILE_NAME} not found, run generate_onnx.py to generate')
 
     # engine builder & config
     builder = trt.Builder(TRT_LOGGER)
     config = builder.create_builder_config()
-    config.max_workspace_size = (1 << 35)  # 16GB, change it if you have less GPU memory
+    # 16GB, change it if you have less GPU memory
+    config.max_workspace_size = (1 << 35)
 
-    network = builder.create_network(flags=(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)))
-    parse_oonx_network(network, '../../temp/naive_model.onnx')
+    # parse network from onnx
+    network = builder.create_network(
+        flags=(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)))
+    parse_oonx_network(network, DEMO_FILE_NAME)
+    # concat it with layer
     onnx_output = network.get_output(0)
     network.unmark_output(onnx_output)
     moe_plugin_py, moe_plugin = create_moe_plugin()
@@ -46,8 +67,9 @@ def run_concatenated_network():
 
     # optimzation profile (for dynamic shape support in ONNX layers)
     profile = builder.create_optimization_profile()
-    layer_shape = (moe_plugin_py.config.max_batch_size, moe_plugin_py.config.seq_len, moe_plugin_py.config.embedding_size)
-    profile.set_shape("input", layer_shape, layer_shape, layer_shape)
+    layer_shape = (moe_plugin_py.config.max_batch_size,
+                   moe_plugin_py.config.seq_len, moe_plugin_py.config.embedding_size)
+    profile.set_shape('input', layer_shape, layer_shape, layer_shape)
     config.add_optimization_profile(profile)
 
     # build engine
@@ -64,7 +86,8 @@ def run_concatenated_network():
     with engine.create_execution_context() as context:
         start = time.time()
         # note: because we have a explicit batch dimension, batch_size must be set to 1
-        [layer_output] = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=1)
+        [layer_output] = do_inference(
+            context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=1)
         end = time.time()
         elapsed = end - start
         print('Inference has cost', elapsed, 'seconds')
