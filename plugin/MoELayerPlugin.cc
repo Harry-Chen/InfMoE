@@ -180,12 +180,7 @@ void MoELayerPlugin::terminate() noexcept {
         }
         delete[] mStreams;
     }
-    // // invoke sublayer termination
-    // if (mSublayer != nullptr) {
-    //     mSublayer->terminate();
-    //     delete mSublayer;
-    //     mSublayer = nullptr;
-    // }
+    // decrement sublayer ref counter
     mSublayer.reset();
 }
 
@@ -324,9 +319,9 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, const PluginT
         // run expert on corresponding input / output buffer
         CUBLAS_SAFE_CALL(cublasSetStream_v2(mCublasHandle, current_stream));
         dbg(i);
-        assert(mSublayer->run(expert_count[i], current_workspace, d_routed_features + current_token_offset,
+        mSublayer->run(expert_count[i], current_workspace, d_routed_features + current_token_offset,
                               d_post_expert_features + current_token_offset,
-                              current_workspace + mSublayer->weightSize(), current_stream));
+                              current_workspace + mSublayer->weightSize(), current_stream);
     }
 
     // 5. free CPU buffer & synchronize all streams

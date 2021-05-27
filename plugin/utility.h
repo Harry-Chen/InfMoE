@@ -15,7 +15,7 @@
 #define CUDA_SAFE_CALL(call) { \
     auto err = (call); \
     if (err != cudaSuccess) { \
-        fprintf(stderr, "CUDA Error %s at %s:%d\n", cudaGetErrorString(err), __FILE__, __LINE__); \
+        fprintf(stderr, "CUDA Error %d (%s) at %s:%d\n", err, cudaGetErrorString(err), __FILE__, __LINE__); \
         exit(-1); \
     } \
 }

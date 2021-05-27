@@ -130,7 +130,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
         reinterpret_cast<const float *>(weight_ptr_byte + layernormWeightSize() + intermediateFFWeightSize() * 2);
     auto *expert_output = reinterpret_cast<float *>(output);
     beta = 1.0f;
-    CUDA_SAFE_CALL(cudaMemcpyAsync(output, input, sizeof(float) * 0, cudaMemcpyDeviceToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(output, input, sizeof(float) * tokenCount * mEmbeddingSize, cudaMemcpyDeviceToDevice, stream));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mEmbeddingSize, tokenCount, mHiddenSize,
                                     &alpha, wo_weight, mHiddenSize, wi_1_output, mHiddenSize, &beta, expert_output,
                                     mEmbeddingSize));
