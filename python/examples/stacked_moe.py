@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 
+import sys
 import time
 import numpy as np
 import tensorrt as trt
@@ -8,7 +9,7 @@ import pycuda.autoinit # DO NOT REMOVE!
 from common import TRT_LOGGER, create_moe_config_with_random_weight
 from trt_moe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
 
-def run_two_layer_moe():
+def run_stacked_moe(moe_layers: int):
     r"""
     Create a network consisting only two MoE layers with same attributes & weights
     """
@@ -28,12 +29,14 @@ def run_two_layer_moe():
     layer_shape = (moe_config.max_batch_size, moe_config.seq_len, moe_config.embedding_size)
     network = builder.create_network(flags=(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)))
     input_layer = network.add_input(name="input_layer", dtype=trt.float32, shape=layer_shape)
-    # two stacked layers of MoE
-    moe_layer = create_layer_from_plugin(
-        network, moe_plugin, [input_layer], 'moe_1')
-    moe_layer_2 = create_layer_from_plugin(
-        network, moe_plugin, [moe_layer.get_output(0)], 'moe_2')
-    network.mark_output(moe_layer_2.get_output(0))
+
+    # stack MoE layers
+    last_output = input_layer
+    for l in range(moe_layers):
+        moe_layer = create_layer_from_plugin(
+            network, moe_plugin, [last_output], f'moe_{l+1}')
+        last_output = moe_layer.get_output(0)
+    network.mark_output(last_output)
 
     # build engine
     engine = builder.build_engine(network, config)
@@ -56,4 +59,9 @@ def run_two_layer_moe():
 
 
 if __name__ == '__main__':
-    run_two_layer_moe()
+    if len(sys.argv) >= 2:
+        moe_layers = int(sys.argv[1])
+    else:
+        moe_layers = 3
+
+    run_stacked_moe(moe_layers)

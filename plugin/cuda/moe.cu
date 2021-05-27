@@ -149,7 +149,7 @@ void moe_expert_select(
     float *d_expert_weight,
     cudaStream_t stream
 ) {
-    expert_select_average_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
+    expert_select_top1_kernel<float, false><<<ceiling(token_num, 512), 512, 0, stream>>>(
         token_num, expert_num, d_token_expert_aff, d_gate_selection, d_expert_weight
     );
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
