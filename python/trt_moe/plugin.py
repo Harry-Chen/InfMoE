@@ -6,7 +6,7 @@ import ctypes
 import tensorrt as trt
 import numpy as np
 
-from .config import MoEConfig
+from .config import MoELayerConfig
 
 
 # load library from build directory first
@@ -45,9 +45,9 @@ class MoELayerPlugin:
     Python binding of MoELayerPlugin
     """
 
-    __config: MoEConfig
+    __config: MoELayerConfig
 
-    def __init__(self, config: MoEConfig, namespace: str = '') -> None:
+    def __init__(self, config: MoELayerConfig, namespace: str = '') -> None:
         global TRT_MOE_LAYER_CREATOR
         # initialize creator
         if TRT_MOE_LAYER_CREATOR is None:
@@ -66,16 +66,16 @@ class MoELayerPlugin:
         return self.__config
 
     @config.setter
-    def set_config(self, config: MoEConfig):
+    def set_config(self, config: MoELayerConfig):
         self.__check_config(config)
-        self.__config = MoEConfig
+        self.__config = MoELayerConfig
 
     def create_plugin(self, plugin_name='moe_layer_plugin'):
         attributes = self.__get_layer_attributes()
         return TRT_MOE_LAYER_CREATOR.create_plugin(plugin_name, field_collection=attributes)
 
     @classmethod
-    def __check_config(config: MoEConfig):
+    def __check_config(config: MoELayerConfig):
         assert config.expert_count > 0
         assert config.seq_len > 0
         assert config.embedding_size > 0
