@@ -188,3 +188,4 @@ build/
 *.qdrep
 *.sqlite
 *.ncu-rep
+temp/

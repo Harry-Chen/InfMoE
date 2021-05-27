@@ -5,7 +5,7 @@ import numpy as np
 import tensorrt as trt
 import pycuda.autoinit # DO NOT REMOVE!
 
-from .common import TRT_LOGGER, create_moe_config_with_random_weight
+from common import TRT_LOGGER, create_moe_config_with_random_weight
 from trt_moe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
 
 def run_two_layer_moe():
@@ -19,16 +19,15 @@ def run_two_layer_moe():
     config.max_workspace_size = (1 << 35)  # 16GB, change it if you have less GPU memory
 
     # moe plugin
-    moe_config = create_moe_config_with_random_weight()
+    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz', 512, 20, 4096, 16384, 4, "T5_FF", 4)
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)
     moe_plugin = moe_plugin_class.create_plugin()
 
     # network for builder
-    builder.max_batch_size = moe_config.max_batch_size
-    network = builder.create_network()
-    input_layer = network.add_input(name="input_layer", dtype=trt.float32, shape=(
-        moe_config.seq_len, moe_config.embedding_size))
+    layer_shape = (moe_config.max_batch_size, moe_config.seq_len, moe_config.embedding_size)
+    network = builder.create_network(flags=(1 << int(trt.NetworkDefinitionCreationFlag.EXPLICIT_BATCH)))
+    input_layer = network.add_input(name="input_layer", dtype=trt.float32, shape=layer_shape)
     # two stacked layers of MoE
     moe_layer = create_layer_from_plugin(
         network, moe_plugin, [input_layer], 'moe_1')
@@ -41,14 +40,14 @@ def run_two_layer_moe():
     inputs, outputs, bindings, stream = allocate_buffers(engine)
 
     # generate input
-    layer_shape = (moe_config.max_batch_size, moe_config.seq_len, moe_config.embedding_size)
     layer_input = np.random.rand(*layer_shape).astype('f')
     np.copyto(inputs[0].host, layer_input.ravel())
 
     # run inference
     with engine.create_execution_context() as context:
         start = time.time()
-        [layer_output] = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=moe_config.max_batch_size)
+        # note: because we have a explicit batch dimension, batch_size must be set to 1
+        [layer_output] = do_inference(context, bindings=bindings, inputs=inputs, outputs=outputs, stream=stream, batch_size=1)
         end = time.time()
         elapsed = end - start
         print('Inference has cost', elapsed, 'seconds')
