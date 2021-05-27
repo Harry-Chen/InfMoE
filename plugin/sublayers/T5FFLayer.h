@@ -5,8 +5,8 @@
 
 #include <cuda_runtime.h>
 
+#include "SubLayer.h"
 #include "../thirdparty/cnpy/cnpy.h"
-#include "../SubLayer.h"
 
 class T5FFLayer : public MoESubLayer {
    private:
@@ -40,8 +40,8 @@ class T5FFLayer : public MoESubLayer {
     virtual void copyWeights(void *dst, int expert, cudaStream_t stream) override;
     virtual bool run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
                      cudaStream_t stream) override;
-    void initialize();
-    void terminate();
+    virtual void initialize();
+    virtual void terminate();
 };
 
 #endif  // T5FFLAYER_H

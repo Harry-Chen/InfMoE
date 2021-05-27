@@ -1,12 +1,14 @@
-#include "MoELayerPlugin.h"
-
 #include <cublas_v2.h>
 #include <stdio.h>
 
+#include "MoELayerPlugin.h"
+#include "utility.h"
 #include "thirdparty/dbg.h"
+
 #include "cuda/moe.h"
 #include "sublayers/T5FFLayer.h"
-#include "utility.h"
+#include "sublayers/IdentityLayer.hh"
+
 
 void MoELayerPlugin::initializeGPUCentroids() {
     auto size = mExpertCentroidsCPU.count * sizeof(float);
@@ -23,6 +25,8 @@ void MoELayerPlugin::createSublayer() {
     // initialize sublayer according to parameter
     if (strcmp(mSublayerType, sublayer_type::T5FF) == 0) {
         mSublayer = new T5FFLayer(mExpertCount, mHiddenSize, mExpertWeightFile, mMaxConcurrency, &mCublasHandle);
+    } else if (strcmp(mSublayerType, sublayer_type::Identity) == 0) {
+        mSublayer = new IdentityLayer;
     } else {
         fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
         assert(false);

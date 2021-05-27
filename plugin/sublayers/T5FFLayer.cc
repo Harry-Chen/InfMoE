@@ -1,13 +1,14 @@
 #include "T5FFLayer.h"
 
 #include <cublas_v2.h>
+#include <NvInfer.h>
 
 #include <cassert>
 #include <string>
 
 #include "../thirdparty/dbg.h"
 #include "../cuda/ops.h"
-#include "utility.h"
+#include "../utility.h"
 
 T5FFLayer::~T5FFLayer() {
     dbg("destructing T5FFLayer");

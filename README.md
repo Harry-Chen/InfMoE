@@ -36,7 +36,7 @@ python3 setup.py build_ext --tensorrt-prefix=/path/to/tensorrt --cudnn-prefix=/p
 python3 setup.py install .
 ```
 
-You can also use `bdist_wheel` or other commands provided by `setuptools`.
+You can also use `bdist_wheel` or other commands provided by `setuptools`. You can pass `--debug` to `build_ext` to enable verbose logging & keep the symbols for debugging purpose.
 
 ### C++ only (advanced)
 
@@ -52,7 +52,7 @@ meson setup build -DWITH_TENSORRT=/path/to/tensorrt -DWITH_CUDNN=/path/to/cudnn
 ninja -C builddir # or just run `make`
 ```
 
-If everything goes well, you can find `libtrtmoelayer.so` in `builddir`.
+If everything goes well, you can find `libtrtmoelayer.so` in `builddir`. Similarly you can pass `-DDEBUG=true` to `meson setup` for debugging.
 
 ## Plugin attributes
 
@@ -67,7 +67,22 @@ When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the follo
 
 ## Usage
 
-TBD
+The plugin can only handle MoE layers. To run inference with a full network, you should slice it before and after any MoE layer:
+
+* for non-MoE layers, jsut save them as `onnx` / UFF format and use TensorRT to parse it;
+* for MoE layers, dump expert centroids and weights of each expert separately (in the format mentioned below), manually initialize a layer using `MoELayerPlugin` with Python or C++.
+
+Then you can concatenate MoE / non-MoE layers to obtain the full network, which can be later built into a TensorRT CUDA engine and used to run inference with / serialize & dump to file.
+
+Python and C++ examples are given below for usage.
+
+### Python
+
+TBD.
+
+### C++
+
+TBD.
 
 ## Scheduling
 
@@ -75,9 +90,14 @@ TBD
 
 ## Sub-layer
 
-Extend `MoESubLayer` class to implement your own sub-layer.
+We have provided some sublayers in `plugin/sublayers`. To implement your own sub-layer, you need to:
 
-### T5FFLayer
+* Extend `MoESubLayer` class
+* Add your layer name and initialization code to `MoELayerPlugin.h` (in `sublayer_type`) and `MoELayerPlugin.cc` (in `MoELayerPlugin::createSublayer()`)
+* Add your source file (`.cpp` only) to `meson.build`
+* Rebuild the plugin
+
+### T5FFLayer (`T5_FF`)
 
 This project includes an sublayer implementation of feed-forward layer in T5 network. It is defined as:
 
@@ -91,13 +111,6 @@ where `wi_0`, `wi_1` and `wo` are linear layers with no bias, first converting i
 
 The given `export_weight_file` must be a `npz` file containing the following variables (`n` varies from `0` to `expert_count - 1`): `n/layer_norm_weight`, `n/wi_0_weight`, `n/wi_1_weight`, `n/wo_weight`.
 
+### IdentityLayer (`Identity`)
 
-## Usage for Inference
-
-The plugin can only handle MoE layers. To run inference with a full network, you should slice it before and after any MoE layer:
-
-* for non-MoE layers, jsut save them as `onnx` format and use TensorRT to parse & run it;
-* for MoE layers, dump expert centroids and weights of each expert separately (in the format mentioned above), manually initialize `MoELayerPlugin` with TensorRT API, then run it.
-
-TODO: Python example
-
+This layer **DOES NOTHING** (thus use none of the provided plugin attributes), just copies the input directly to the output. It is intended for debugging purpose only.

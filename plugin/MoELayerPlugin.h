@@ -8,7 +8,7 @@
 
 #include <array>
 
-#include "SubLayer.h"
+#include "sublayers/SubLayer.h"
 
 using namespace nvinfer1;
 
@@ -21,6 +21,7 @@ static const char* MOE_LAYER_PLUGIN_NAME{"MoELayerPlugin"};
 
 namespace sublayer_type {
 static const char* T5FF{"T5_FF"};
+static const char* Identity{"Identity"};
 }
 
 class MoELayerPlugin : public IPluginV2 {
