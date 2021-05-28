@@ -7,7 +7,7 @@ import tensorrt as trt
 import pycuda.autoinit # DO NOT REMOVE!
 
 from common import TRT_LOGGER, create_moe_config_with_random_weight
-from trt_moe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
+from infmoe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
 
 def run_stacked_moe(moe_layers: int):
     r"""
@@ -20,7 +20,7 @@ def run_stacked_moe(moe_layers: int):
     config.max_workspace_size = (1 << 35)  # 16GB, change it if you have less GPU memory
 
     # moe plugin
-    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz', 512, 20, 4096, 16384, 4, "T5_FF", 4)
+    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz', 512, 20, 4096, 16384, 4, "T5_FF", 80)
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)
     moe_plugin = moe_plugin_class.create_plugin()

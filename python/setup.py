@@ -56,24 +56,24 @@ class build_ext(distutils.cmd.Command):
 
         shutil.copy(
             os.path.join("build", "libtrtmoelayer.so"),
-            os.path.join("trt_moe", "libtrtmoelayer.so"),
+            os.path.join("infmoe", "libtrtmoelayer.so"),
         )
 
 
 if __name__ == '__main__':
     setuptools.setup(
-        name='trt-moe',
+        name='infmoe',
         version='0.0.1',
-        description='Python binding of TensorRT plugin for MoE layers',
+        description='Python binding of TensorRT plugin for MoE layer inference on NVIDIA GPUs with minimal memory consumption',
         author='Shengqi Chen, Yanzheng Cai, Xu Han',
         author_email='shengqi.chen@tuna.tsinghua.edu.cn',
         license='Apache-2',
-        url='https://github.com/Harry-Chen/trt-moe',
-        packages=['trt_moe'],
+        url='https://github.com/Harry-Chen/infmoe',
+        packages=['infmoe'],
         cmdclass={
             'build_ext': build_ext
         },
         package_data={
-            'trt_moe': ['libtrtmoelayer.so'],
+            'infmoe': ['libtrtmoelayer.so'],
         },
     )

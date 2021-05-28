@@ -1,7 +1,7 @@
-# moe-infer
+# InfMoE
 
-Inference framework for MoE-based Transformer models, based on a TensorRT custom plugin
-named `MoELayerPlugin` (including Python binding) that can run inference on a MoE layer with any sub-layer.
+Inference framework for MoE-based models, based on a TensorRT custom plugin
+named `MoELayerPlugin` (including Python binding) that can run inference of MoE layers with any sub-layer on NVIDIA GPUs with minimal memory consumption.
 
 ## Installation
 
@@ -17,8 +17,10 @@ Dependencies:
 
 To use TensorRT in Python, you need to first install:
 
-* TensorRT pip package (see <https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip>)
+* TensorRT pip package (either from downloaded TensorRT package or from PyPI as `nvidia-tensorrt`, see <https://docs.nvidia.com/deeplearning/tensorrt/install-guide/index.html#installing-pip>)
 * PyCUDA
+
+Simply you could run `python3 -m pip install -r requirements.txt`.
 
 Note: If you install `nvidia-tensorrt` from PyPI (but not from downloaded TensorRT package), you **MUST** ensure the version of TensorRT that `MoELayerPlugin` links to matches the version that pip package uses (see `site-packages/tensorrt/`). Otherwise the plugin will not work correctly.
 

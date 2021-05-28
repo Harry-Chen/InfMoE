@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 import tensorrt as trt
-from trt_moe import MoELayerConfig
+from infmoe import MoELayerConfig
 
 TRT_LOGGER = trt.Logger(trt.Logger.WARNING)
 

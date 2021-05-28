@@ -1,0 +1,3 @@
+pycuda
+nvidia-tensorrt
+numpy

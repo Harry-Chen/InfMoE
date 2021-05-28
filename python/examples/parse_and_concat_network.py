@@ -7,11 +7,11 @@ import tensorrt as trt
 import pycuda.autoinit  # DO NOT REMOVE!
 
 from common import TRT_LOGGER, create_moe_config_with_random_weight
-from trt_moe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
+from infmoe import MoELayerPlugin, allocate_buffers, create_layer_from_plugin, do_inference
 
 
 # contains a naive MLP network as described in 'generate_onnx.py'
-DEMO_FILE_NAME = 'naive_model.onnx'
+DEMO_FILE_NAME = '../../temp/encoder/split_trying_a.onnx'
 
 
 def parse_oonx_network(network, filename):
