@@ -10,11 +10,9 @@
 #include "../thirdparty/dbg.h"
 
 class IdentityLayer : public MoESubLayer {
-   private:
-    int mEmbeddingSize;
 
    public:
-    explicit IdentityLayer() : MoESubLayer(0, 0, nullptr, 0) {}
+    explicit IdentityLayer() : MoESubLayer(0, 0, 0, nullptr, 0) {}
     virtual ~IdentityLayer() override {}
     virtual bool configureWithFormat(const Dims *inputDims, [[maybe_unused]] int32_t nbInputs, const Dims *outputDims,
                                      [[maybe_unused]] int32_t nbOutputs) override {

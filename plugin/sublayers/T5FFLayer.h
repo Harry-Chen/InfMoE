@@ -10,7 +10,6 @@
 
 class T5FFLayer : public MoESubLayer {
    private:
-    int mEmbeddingSize;
     int mSequenceLength;
     cudaDeviceProp mDeviceProp;
    

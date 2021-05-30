@@ -101,6 +101,8 @@ class MoELayerPlugin:
         return trt.PluginFieldCollection([
             trt.PluginField("expert_count", np.int32(
                 self.config.expert_count), trt.PluginFieldType.INT32),
+            trt.PluginField("embedding_size", np.int32(
+                self.config.embedding_size), trt.PluginFieldType.INT32),
             trt.PluginField("hidden_size", np.int32(
                 self.config.hidden_size), trt.PluginFieldType.INT32),
             trt.PluginField("max_concurrency", np.int32(

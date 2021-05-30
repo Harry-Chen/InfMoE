@@ -14,6 +14,7 @@ REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
 // parameter fields
 namespace field_name {
 const char *EXPERT_COUNT{"expert_count"};
+const char *EMBEDDING_SIZE{"embedding_size"};
 const char *HIDDEN_SIZE{"hidden_size"};
 const char *MAX_CONCURRENCY{"max_concurrency"};
 const char *EXPERT_CENTROIDS{"expert_centroids"};
@@ -23,9 +24,11 @@ const char *MOE_VARIANT{"moe_variant"};
 }  // namespace
 
 // static class member
-const std::array<PluginField, 7> MoELayerPluginCreator::mPluginAttributes{
+const std::array<PluginField, 8> MoELayerPluginCreator::mPluginAttributes{
     // count of experts
     PluginField{field_name::EXPERT_COUNT, nullptr, PluginFieldType::kINT32, 1},
+    // embedding size
+    PluginField{field_name::EMBEDDING_SIZE, nullptr, PluginFieldType::kINT32, 1},
     // DIM -> hidden_size -> DIM
     PluginField{field_name::HIDDEN_SIZE, nullptr, PluginFieldType::kINT32, 1},
     // max concurrent experts in GPU memory
@@ -56,12 +59,14 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     dbg("invoke createPlugin with name", name);
 
     int expert_count = -1;
+    int embedding_size = -1;
     int hidden_size = -1;
     int max_concurrency = 2;
-    Weights expert_centroids;
+    float *expert_centroids = nullptr;
     char *weight_file = nullptr;
     char *sublayer = nullptr;
     char *variant = nullptr;
+    int centroid_length;
 
     // parse parameters from fc
     for (int i = 0; i < fc->nbFields; ++i) {
@@ -70,6 +75,9 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
         if (strcmp(name, field_name::EXPERT_COUNT) == 0) {
             assert(field.length == 1 && field.data != nullptr);
             expert_count = *static_cast<const int *>(field.data);
+        } else if (strcmp(name, field_name::EMBEDDING_SIZE) == 0) {
+            assert(field.length == 1 && field.data != nullptr);
+            embedding_size = *static_cast<const int *>(field.data);
         } else if (strcmp(name, field_name::HIDDEN_SIZE) == 0) {
             assert(field.length == 1 && field.data != nullptr);
             hidden_size = *static_cast<const int *>(field.data);
@@ -78,12 +86,11 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
             max_concurrency = *static_cast<const int *>(field.data);
         } else if (strcmp(name, field_name::EXPERT_CENTROIDS) == 0) {
             assert(field.length > 0 && field.data != nullptr);
+            centroid_length = field.length;
             auto centroids = new float[field.length];
             memcpy(centroids, field.data, field.length * sizeof(float));
             // showArray(static_cast<const float*>(centroids), expert_count, field.length / expert_count);
-            expert_centroids.type = DataType::kFLOAT;
-            expert_centroids.count = field.length;
-            expert_centroids.values = centroids;
+            expert_centroids = centroids;
         } else if (strcmp(name, field_name::EXPERT_WEIGHT_FILE) == 0) {
             assert(field.length > 0 && field.data != nullptr);
             weight_file = strdup(static_cast<const char *>(field.data));
@@ -102,14 +109,16 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     }
 
     // check parameters
+    assert(embedding_size > 0);
     assert(expert_count > 0);
     assert(hidden_size > 0);
     assert(max_concurrency > 0);
-    assert(expert_centroids.values != nullptr);
+    assert(centroid_length == embedding_size * expert_count);
+    assert(expert_centroids != nullptr);
     assert(sublayer != nullptr);
     assert(variant != nullptr);
 
-    dbg(variant, expert_count, hidden_size, max_concurrency, expert_centroids.count, sublayer, weight_file);
+    dbg(variant, expert_count, embedding_size, hidden_size, max_concurrency, sublayer, weight_file);
 
     struct stat64 weight_stat {};
     if (stat64(weight_file, &weight_stat) != 0) {
@@ -122,7 +131,7 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     }
 
     auto flags = MoELayerPlugin::parseFlags(variant);
-    auto plugin = new MoELayerPlugin(name, expert_count, hidden_size, max_concurrency, expert_centroids, weight_file, sublayer, flags);
+    auto plugin = new MoELayerPlugin(name, expert_count, embedding_size, hidden_size, max_concurrency, expert_centroids, weight_file, sublayer, flags);
     plugin->setPluginNamespace(mPluginNamespace);
 
     return plugin;

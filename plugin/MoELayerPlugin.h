@@ -53,9 +53,10 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
 
     // layer parameters
     int mExpertCount;
+    int mEmbeddingSize;
     int mHiddenSize;
     int mMaxConcurrency;  // maximum number of sublayers on GPU memory
-    Weights mExpertCentroidsCPU{}, mExpertCentroidsGPU{};
+    float *mCentroidsCpu, *mCentroidsGpu = nullptr;
     const char *mExpertWeightFile, *mSublayerType;
     MoEFlags mFlags; // store other flags
 
@@ -64,20 +65,19 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
     mutable size_t mSublayerWorkspacecSize;
 
     // inferred from network
-    int mEmbeddingSize = -1;
     int mSequenceLength = -1;
     void ensureGPUCentroids();
     void ensureSublayerWorkspaceSize(size_t tokenCount) const;
     void createSublayer();
     void ensureCUDAContext();
-    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mFlags) +
-                                                    sizeof(mMaxConcurrency) + sizeof(mExpertCentroidsCPU.count) +
-                                                    sizeof(int) * 2;
+    size_t centroidsSize() const { return mEmbeddingSize * mExpertCount; }
+    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mEmbeddingSize) + sizeof(mHiddenSize) + sizeof(mFlags) +
+                                                    sizeof(mMaxConcurrency) + sizeof(int) * 2;
 
    public:
     // constructor for MoELayerPluginCreator
-    explicit MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, int maxConcurrency,
-                            Weights expertCentroidsCPU, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags);
+    explicit MoELayerPlugin(const char* layerName, int expertCount, int embeddingSize, int hiddenSize, int maxConcurrency,
+                            float *cpuCentroids, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags);
     // constructor for clone
     explicit MoELayerPlugin(const MoELayerPlugin& src);
     // constructor for deserialization
@@ -135,7 +135,7 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
 class MoELayerPluginCreator : public IPluginCreator {
    private:
     const char* mPluginNamespace = nullptr;
-    const static std::array<PluginField, 7> mPluginAttributes;
+    const static std::array<PluginField, 8> mPluginAttributes;
     const static PluginFieldCollection mFC;
 
    public:

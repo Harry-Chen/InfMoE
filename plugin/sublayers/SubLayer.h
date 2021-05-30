@@ -18,14 +18,16 @@ using nvinfer1::IExprBuilder;
 class MoESubLayer {
    protected:
     int mExpertCount;
+    int mEmbeddingSize;
     int mHiddenSize;
     int mMaxConcurrency;
     const char *mWeightFile;
     cublasHandle_t mCublasHandle = nullptr;  // passed by MoELayerPlugin
 
    public:
-    explicit MoESubLayer(int expertCount, int hiddenSize, const char *weightFile, int maxConcurrency)
+    explicit MoESubLayer(int expertCount, int embeddingSize, int hiddenSize, const char *weightFile, int maxConcurrency)
         : mExpertCount(expertCount),
+          mEmbeddingSize(embeddingSize),
           mHiddenSize(hiddenSize),
           mMaxConcurrency(maxConcurrency),
           mWeightFile(weightFile) {};

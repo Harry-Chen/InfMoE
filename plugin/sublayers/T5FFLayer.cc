@@ -25,7 +25,7 @@ bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, con
     auto &dim = inputDims[0];
     auto &dim2 = outputDims[0];
     assert(dim.d[2] == dim2.d[2] && dim.d[1] == dim2.d[1] && dim.d[0] == dim2.d[0]);
-    mEmbeddingSize = dim.d[2];
+    assert(mEmbeddingSize == dim.d[2]);
     mSequenceLength = dim.d[1];
     // get CUDA device props
     CUDA_SAFE_CALL(cudaGetDeviceProperties(&mDeviceProp, 0));
