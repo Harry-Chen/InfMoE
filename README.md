@@ -80,7 +80,7 @@ We provide several Python examples in `python/examples` showing how to do the af
 
 ## Scheduling
 
-TBD
+See CPM-2 paper for scheduling details. To be ported to public source code soon.
 
 ## Sub-layer
 

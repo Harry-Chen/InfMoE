@@ -65,10 +65,10 @@ if __name__ == '__main__':
         name='infmoe',
         version='0.0.1',
         description='Python binding of TensorRT plugin for MoE layer inference on NVIDIA GPUs with minimal memory consumption',
-        author='Shengqi Chen, Yanzheng Cai, Xu Han',
+        author='Shengqi Chen, Yanzhen Cai, Zhenbo Sun and Xu Han',
         author_email='shengqi.chen@tuna.tsinghua.edu.cn',
         license='Apache-2',
-        url='https://github.com/Harry-Chen/infmoe',
+        url='https://github.com/Harry-Chen/InfMoE',
         packages=['infmoe'],
         cmdclass={
             'build_ext': build_ext
