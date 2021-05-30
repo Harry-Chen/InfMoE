@@ -85,6 +85,7 @@ class MoELayerPlugin:
         assert config.sublayer_type != ''
         assert config.expert_centroids.size > 0
         assert config.weight_file_path != ''
+        assert config.moe_variant != ''
         # C++ plugin will do the other validity check
         pass
 
@@ -93,6 +94,10 @@ class MoELayerPlugin:
         if self.config is None:
             raise Exception('No MoE config provided')
 
+        self.weight_file_path_encoded = self.config.weight_file_path.encode('utf-8')
+        self.sublayer_type_encoded = self.config.sublayer_type.encode('utf-8')
+        self.moe_variant_encoded = self.config.moe_variant.encode('utf-8')
+
         return trt.PluginFieldCollection([
             trt.PluginField("expert_count", np.int32(
                 self.config.expert_count), trt.PluginFieldType.INT32),
@@ -100,10 +105,8 @@ class MoELayerPlugin:
                 self.config.hidden_size), trt.PluginFieldType.INT32),
             trt.PluginField("max_concurrency", np.int32(
                 self.config.max_concurrency), trt.PluginFieldType.INT32),
-            trt.PluginField("expert_centroids", self.config.expert_centroids,
-                            trt.PluginFieldType.FLOAT32),
-            trt.PluginField("expert_weight_file", self.config.weight_file_path.encode(
-                'utf-8'), trt.PluginFieldType.UNKNOWN),
-            trt.PluginField("expert_sublayer_type", self.config.sublayer_type.encode(
-                'utf-8'), trt.PluginFieldType.UNKNOWN),
+            trt.PluginField("expert_centroids", self.config.expert_centroids, trt.PluginFieldType.FLOAT32),
+            trt.PluginField("expert_weight_file", self.weight_file_path_encoded, trt.PluginFieldType.UNKNOWN),
+            trt.PluginField("expert_sublayer_type", self.sublayer_type_encoded, trt.PluginFieldType.UNKNOWN),
+            trt.PluginField("moe_variant", self.moe_variant_encoded, trt.PluginFieldType.UNKNOWN),
         ])

@@ -21,9 +21,26 @@ static const char* MOE_LAYER_PLUGIN_NAME{"MoELayerPlugin"};
 
 
 namespace sublayer_type {
-static const char* T5FF{"T5_FF"};
-static const char* Identity{"Identity"};
+[[maybe_unused]] static const char* T5FF{"T5_FF"};
+[[maybe_unused]] static const char* Identity{"Identity"};
 }  // namespace sublayer_type
+
+namespace moe_variant {
+[[maybe_unused]] static const char* BASE_LAYER{"base_layer"}; // no preprocess on input, mix expert-output with input by sigmoid(score)
+[[maybe_unused]] static const char* CPM_2{"cpm_2"}; // score = layernorm(input) @ centroid, no mix
+[[maybe_unused]] static const char* DEFAULT{"default"}; // no preprocess on input, no mix
+} // namespace moe_variant
+
+
+// store behaviour flags of MoE layers
+struct MoEFlags {
+    bool layernormOnInputBeforeScore = false;
+    bool baseLayerOutputMix= false;
+    uint16_t padding = 0;
+};
+
+static_assert(sizeof(MoEFlags) == 4);
+
 
 class MoELayerPlugin : public IPluginV2DynamicExt  {
 
@@ -40,6 +57,7 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
     int mMaxConcurrency;  // maximum number of sublayers on GPU memory
     Weights mExpertCentroidsCPU{}, mExpertCentroidsGPU{};
     const char *mExpertWeightFile, *mSublayerType;
+    MoEFlags mFlags; // store other flags
 
     // sublayer related
     std::shared_ptr<MoESubLayer> mSublayer = nullptr;
@@ -52,20 +70,22 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
     void ensureSublayerWorkspaceSize(size_t tokenCount) const;
     void createSublayer();
     void ensureCUDAContext();
-    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) +
+    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mHiddenSize) + sizeof(mFlags) +
                                                     sizeof(mMaxConcurrency) + sizeof(mExpertCentroidsCPU.count) +
                                                     sizeof(int) * 2;
 
    public:
     // constructor for MoELayerPluginCreator
     explicit MoELayerPlugin(const char* layerName, int expertCount, int hiddenSize, int maxConcurrency,
-                            Weights expertCentroidsCPU, const char* expertWeightFile, const char* sublayerType);
+                            Weights expertCentroidsCPU, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags);
     // constructor for clone
     explicit MoELayerPlugin(const MoELayerPlugin& src);
     // constructor for deserialization
     explicit MoELayerPlugin(const char* layerName, const void* serialData, size_t serialLength);
     // destructor
     virtual ~MoELayerPlugin();
+    // parse flags from variant
+    static MoEFlags parseFlags(const char* moeVariant);
     // overloaded virtual functions from IPluginV2
     const char* getPluginType() const noexcept override { return ::MOE_LAYER_PLUGIN_NAME; };
     const char* getPluginVersion() const noexcept override { return ::MOE_LAYER_PLUGIN_VERSION; }
@@ -90,8 +110,8 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
     // IPluginV2Ext
     nvinfer1::DataType getOutputDataType(int32_t index, nvinfer1::DataType const* inputTypes,
                                          int32_t nbInputs) const noexcept override;
-    void attachToContext(cudnnContext* /*cudnn*/, cublasContext* /*cublas*/, IGpuAllocator* /*allocator*/) noexcept override;
-    void detachFromContext() noexcept override;
+    // void attachToContext(cudnnContext* /*cudnn*/, cublasContext* /*cublas*/, IGpuAllocator* /*allocator*/) noexcept override;
+    // void detachFromContext() noexcept override;
     // bool isOutputBroadcastAcrossBatch(int32_t outputIndex, bool const* inputIsBroadcasted,
     //                                   int32_t nbInputs) const noexcept override;
     // bool canBroadcastInputAcrossBatch(int32_t inputIndex) const noexcept override;
@@ -115,7 +135,7 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
 class MoELayerPluginCreator : public IPluginCreator {
    private:
     const char* mPluginNamespace = nullptr;
-    const static std::array<PluginField, 6> mPluginAttributes;
+    const static std::array<PluginField, 7> mPluginAttributes;
     const static PluginFieldCollection mFC;
 
    public:

@@ -20,7 +20,11 @@ def run_stacked_moe(moe_layers: int):
     config.max_workspace_size = (1 << 35)  # 16GB, change it if you have less GPU memory
 
     # moe plugin
-    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz', 512, 20, 4096, 16384, 4, "T5_FF", 80)
+    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz',
+        seq_len=512, expert_count=20, embedding_size=4096, hidden_size=16384,
+        max_concurrency=4, moe_variant="cpm_2", sublayer_type="T5_FF", max_batch_size=80,
+        expert_centroids=None, weight_file_path=None
+    )
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)
     moe_plugin = moe_plugin_class.create_plugin()

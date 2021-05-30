@@ -33,8 +33,11 @@ def parse_oonx_network(network, filename):
 
 
 def create_moe_plugin() -> MoELayerPlugin:
-    moe_config = create_moe_config_with_random_weight(
-        '/tmp/moe_weight_small.npz', 8, 2, 4, 8, 2, "T5_FF", 10)
+    moe_config = create_moe_config_with_random_weight('/tmp/moe_weight_small.npz',
+        seq_len=8, expert_count=2, embedding_size=4, hidden_size=8,
+        max_concurrency=2, moe_variant="cpm_2", sublayer_type="T5_FF", max_batch_size=10,
+        expert_centroids=None, weight_file_path=None
+    )
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)
     moe_plugin = moe_plugin_class.create_plugin()

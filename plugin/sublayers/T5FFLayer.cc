@@ -98,7 +98,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
     auto *expert_input = static_cast<const float *>(input);
     auto *layernorm_weight = reinterpret_cast<const float *>(weight_ptr_byte);
     auto *layernorm_output = reinterpret_cast<float *>(workspace_ptr_byte);
-    layernorm_kernel<float, float>(layernorm_output, expert_input, tokenCount, mEmbeddingSize, (double)1e-6,
+    layernorm_gpu<float, float>(layernorm_output, expert_input, tokenCount, mEmbeddingSize, (double)1e-6,
                                    layernorm_weight, nullptr, mDeviceProp.maxGridSize[1], stream);
 
     // dense_relu_dense(hs) := (gelu(hs @ wi_0^T) * (hs @ wi_1^T)) @ wo^T
@@ -122,7 +122,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
                                     &alpha, wi_1_weight, mEmbeddingSize, layernorm_output, mEmbeddingSize, &beta,
                                     wi_1_output, mHiddenSize));
     // wi_1_o = gelu(wi_0_o) * wi_1_o
-    fused_gelu_dot_kernel(wi_0_output, wi_1_output, tokenCount * mHiddenSize, stream);
+    fused_gelu_dot_gpu(wi_0_output, wi_1_output, tokenCount * mHiddenSize, stream);
     CUDA_SAFE_CALL(cudaGetLastError());
     // copy input -> output
     // output = output + wi_1_o @ wo^T

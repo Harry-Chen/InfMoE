@@ -17,6 +17,7 @@ class MoELayerConfig:
     embedding_size: int
     hidden_size: int
     max_concurrency: int
+    moe_variant: str
     sublayer_type: str
     max_batch_size: int
     expert_centroids: np.ndarray

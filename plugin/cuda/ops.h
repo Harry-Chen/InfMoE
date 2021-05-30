@@ -7,7 +7,7 @@
 #include <cuda_runtime.h>
 
 template <typename T, typename U>
-void layernorm_kernel(T* __restrict__ output, const T* __restrict__ input,
+void layernorm_gpu(T* __restrict__ output, const T* __restrict__ input,
                       int n1,  // batch_size * seq_length
                       int n2,  // embedding_size (or d_model)
                       double epsilon, // default to 1e-6
@@ -18,6 +18,6 @@ void layernorm_kernel(T* __restrict__ output, const T* __restrict__ input,
 
 // B = gelu(A) . B
 template <typename T>
-void fused_gelu_dot_kernel(T* A, T* B, size_t len, cudaStream_t stream);
+void fused_gelu_dot_gpu(T* A, T* B, size_t len, cudaStream_t stream);
 
 #endif  // OPS_H

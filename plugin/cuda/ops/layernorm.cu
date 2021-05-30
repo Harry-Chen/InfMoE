@@ -177,7 +177,7 @@ __global__ void cuApplyLayerNorm(T* __restrict__ output_vals, const T* __restric
 
 
 template <typename T, typename U>
-__host__ void layernorm_kernel(T* __restrict__ output, const T* __restrict__ input, int n1, int n2, double epsilon,
+__host__ void layernorm_gpu(T* __restrict__ output, const T* __restrict__ input, int n1, int n2, double epsilon,
                                const T* gamma, const T* beta, const uint64_t maxGridY, cudaStream_t stream) {
 
     // threads and blocks are magic number from apex
@@ -188,6 +188,6 @@ __host__ void layernorm_kernel(T* __restrict__ output, const T* __restrict__ inp
 }
 
 // explicit instantiation
-template __host__ void layernorm_kernel<float, float>(float* __restrict__ output, const float* __restrict__ input,
+template __host__ void layernorm_gpu<float, float>(float* __restrict__ output, const float* __restrict__ input,
                                                       int n1, int n2, double epsilon, const float* gamma,
                                                       const float* beta, const uint64_t maxGridY, cudaStream_t stream);

@@ -16,10 +16,10 @@ struct gelu_dot {
 };
 
 template <typename T>
-void fused_gelu_dot_kernel(T *A, T *B, size_t len, cudaStream_t stream) {
+void fused_gelu_dot_gpu(T *A, T *B, size_t len, cudaStream_t stream) {
     auto dev_A = thrust::device_pointer_cast(A);
     auto dev_B = thrust::device_pointer_cast(B);
     thrust::transform(thrust::cuda::par.on(stream), dev_A, dev_A + len, dev_B, dev_B, gelu_dot<T>{});
 }
 
-template void fused_gelu_dot_kernel(float *A, float *B, size_t len, cudaStream_t stream);
+template void fused_gelu_dot_gpu(float *A, float *B, size_t len, cudaStream_t stream);

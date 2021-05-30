@@ -3,6 +3,8 @@
 Inference framework for MoE-based models, based on a TensorRT custom plugin
 named `MoELayerPlugin` (including Python binding) that can run inference of MoE layers with any sub-layer on NVIDIA GPUs with minimal memory consumption.
 
+InfMoE is open-sourced under [MIT License](LICENSE).
+
 ## Installation
 
 Dependencies:
