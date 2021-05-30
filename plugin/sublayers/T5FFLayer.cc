@@ -1,13 +1,13 @@
 #include "T5FFLayer.h"
 
-#include <cublas_v2.h>
 #include <NvInferPlugin.h>
+#include <cublas_v2.h>
 
 #include <cassert>
 #include <string>
 
-#include "../thirdparty/dbg.h"
 #include "../cuda/ops.h"
+#include "../thirdparty/dbg.h"
 #include "../utility.h"
 
 using namespace nvinfer1;
@@ -17,7 +17,8 @@ T5FFLayer::~T5FFLayer() {
     dbg("destructing T5FFLayer");
 }
 
-bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) {
+bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims,
+                                    int32_t nbOutputs) {
     assert(nbInputs == 1 && nbOutputs == 1);
     // outputDims[0] should equal inputDims[0]
     // dbg(outputDims[0].nbDims, inputDims[0].nbDims);
@@ -29,11 +30,11 @@ bool T5FFLayer::configureWithFormat(const Dims *inputDims, int32_t nbInputs, con
     mSequenceLength = dim.d[1];
     // get CUDA device props
     CUDA_SAFE_CALL(cudaGetDeviceProperties(&mDeviceProp, 0));
-    assert(mDeviceProp.major >= 6); // we don't want too old devices
+    assert(mDeviceProp.major >= 6);  // we don't want too old devices
     return true;
 }
 
-DimsExprs T5FFLayer::getOutputDimensions(const DimsExprs* inputs, IExprBuilder& exprBuilder) {
+DimsExprs T5FFLayer::getOutputDimensions(const DimsExprs *inputs, IExprBuilder &exprBuilder) {
     // output tensor should have the same shape with input tensor
     dbg(inputs[0].nbDims);
     return DimsExprs(inputs[0]);
@@ -82,8 +83,8 @@ void T5FFLayer::copyWeights(void *dst, int expert, cudaStream_t stream) {
     assert(wo_weight_raw.num_bytes() == intermediateFFWeightSize());
     auto *wo_weight =
         reinterpret_cast<float *>(weight_ptr_byte + layernormWeightSize() + intermediateFFWeightSize() * 2);
-    CUDA_SAFE_CALL(
-        cudaMemcpyAsync(wo_weight, wo_weight_raw.data<float>(), intermediateFFWeightSize(), cudaMemcpyHostToDevice, stream));
+    CUDA_SAFE_CALL(cudaMemcpyAsync(wo_weight, wo_weight_raw.data<float>(), intermediateFFWeightSize(),
+                                   cudaMemcpyHostToDevice, stream));
 }
 
 bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
@@ -99,7 +100,7 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
     auto *layernorm_weight = reinterpret_cast<const float *>(weight_ptr_byte);
     auto *layernorm_output = reinterpret_cast<float *>(workspace_ptr_byte);
     layernorm_gpu<float, float>(layernorm_output, expert_input, tokenCount, mEmbeddingSize, (double)1e-6,
-                                   layernorm_weight, nullptr, mDeviceProp.maxGridSize[1], stream);
+                                layernorm_weight, nullptr, mDeviceProp.maxGridSize[1], stream);
 
     // dense_relu_dense(hs) := (gelu(hs @ wi_0^T) * (hs @ wi_1^T)) @ wo^T
     // TODO: maybe use cublasSgemmBatched for higher throughput
@@ -130,7 +131,8 @@ bool T5FFLayer::run(int32_t tokenCount, const void *weights, const void *input, 
         reinterpret_cast<const float *>(weight_ptr_byte + layernormWeightSize() + intermediateFFWeightSize() * 2);
     auto *expert_output = reinterpret_cast<float *>(output);
     beta = 1.0f;
-    CUDA_SAFE_CALL(cudaMemcpyAsync(output, input, sizeof(float) * tokenCount * mEmbeddingSize, cudaMemcpyDeviceToDevice, stream));
+    CUDA_SAFE_CALL(
+        cudaMemcpyAsync(output, input, sizeof(float) * tokenCount * mEmbeddingSize, cudaMemcpyDeviceToDevice, stream));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mEmbeddingSize, tokenCount, mHiddenSize,
                                     &alpha, wo_weight, mHiddenSize, wi_1_output, mHiddenSize, &beta, expert_output,
                                     mEmbeddingSize));

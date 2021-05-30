@@ -56,7 +56,8 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
     int mEmbeddingSize;
     int mHiddenSize;
     int mMaxConcurrency;  // maximum number of sublayers on GPU memory
-    float *mCentroidsCpu, *mCentroidsGpu = nullptr;
+    float *mCentroidsCpu = nullptr, *mCentroidsGpu = nullptr;
+    float *mLayernormCpu = nullptr, *mLayernormGpu = nullptr;
     const char *mExpertWeightFile, *mSublayerType;
     MoEFlags mFlags; // store other flags
 
@@ -66,18 +67,18 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
 
     // inferred from network
     int mSequenceLength = -1;
-    void ensureGPUCentroids();
+    void ensureGPUWeights();
     void ensureSublayerWorkspaceSize(size_t tokenCount) const;
     void createSublayer();
     void ensureCUDAContext();
     size_t centroidsSize() const { return mEmbeddingSize * mExpertCount; }
-    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mEmbeddingSize) + sizeof(mHiddenSize) + sizeof(mFlags) +
-                                                    sizeof(mMaxConcurrency) + sizeof(int) * 2;
+    constexpr const static size_t METADATA_LENGTH = sizeof(mExpertCount) + sizeof(mEmbeddingSize) + sizeof(mHiddenSize) +
+                                                    sizeof(mMaxConcurrency) + sizeof(mFlags) + sizeof(int) * 2;
 
    public:
     // constructor for MoELayerPluginCreator
     explicit MoELayerPlugin(const char* layerName, int expertCount, int embeddingSize, int hiddenSize, int maxConcurrency,
-                            float *cpuCentroids, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags);
+                            float *centroidsCpu, float *layernormCpu, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags);
     // constructor for clone
     explicit MoELayerPlugin(const MoELayerPlugin& src);
     // constructor for deserialization
@@ -135,7 +136,7 @@ class MoELayerPlugin : public IPluginV2DynamicExt  {
 class MoELayerPluginCreator : public IPluginCreator {
    private:
     const char* mPluginNamespace = nullptr;
-    const static std::array<PluginField, 8> mPluginAttributes;
+    const static std::array<PluginField, 9> mPluginAttributes;
     const static PluginFieldCollection mFC;
 
    public:

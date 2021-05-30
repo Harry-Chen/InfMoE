@@ -23,7 +23,7 @@ def run_stacked_moe(moe_layers: int):
     moe_config = create_moe_config_with_random_weight('/tmp/moe_weight.npz',
         seq_len=512, expert_count=20, embedding_size=4096, hidden_size=16384,
         max_concurrency=4, moe_variant="cpm_2", sublayer_type="T5_FF", max_batch_size=80,
-        expert_centroids=None, weight_file_path=None
+        expert_centroids=None, layernorm_weight=None, weight_file_path=None
     )
     print(moe_config.__repr__())
     moe_plugin_class = MoELayerPlugin(moe_config)

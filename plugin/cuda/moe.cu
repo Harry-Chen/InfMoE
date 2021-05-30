@@ -199,7 +199,7 @@ void moe_expert_count(
     // copy back to GPU
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_token_pos, token_pos, token_num * sizeof(int), cudaMemcpyHostToDevice, stream));
     delete[] gate_selection;
-    delete[] expert_pos;
+    // delete[] expert_pos; // FIXME: potential memory corruption
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
     delete[] token_pos;
 }

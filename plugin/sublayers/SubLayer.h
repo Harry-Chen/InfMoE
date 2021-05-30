@@ -11,9 +11,9 @@
 #include "utility.h"
 
 using nvinfer1::Dims;
-using nvinfer1::Weights;
 using nvinfer1::DimsExprs;
 using nvinfer1::IExprBuilder;
+using nvinfer1::Weights;
 
 class MoESubLayer {
    protected:
@@ -30,13 +30,14 @@ class MoESubLayer {
           mEmbeddingSize(embeddingSize),
           mHiddenSize(hiddenSize),
           mMaxConcurrency(maxConcurrency),
-          mWeightFile(weightFile) {};
+          mWeightFile(weightFile){};
     void setCuBlasHandle(cublasHandle_t handle) { mCublasHandle = handle; }
     virtual ~MoESubLayer(){};
-    virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims, int32_t nbOutputs) = 0;
+    virtual bool configureWithFormat(const Dims *inputDims, int32_t nbInputs, const Dims *outputDims,
+                                     int32_t nbOutputs) = 0;
     virtual size_t weightSize() = 0;
     virtual size_t workspaceSize(int32_t tokenCount) = 0;
-    virtual DimsExprs getOutputDimensions(const DimsExprs* inputs, IExprBuilder& exprBuilder) = 0;
+    virtual DimsExprs getOutputDimensions(const DimsExprs *inputs, IExprBuilder &exprBuilder) = 0;
     virtual void copyWeights(void *dst, int expert, cudaStream_t stream) = 0;
     virtual bool run(int32_t tokenCount, const void *weights, const void *input, void *output, void *workspace,
                      cudaStream_t stream) = 0;

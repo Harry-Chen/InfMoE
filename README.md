@@ -63,11 +63,14 @@ If everything goes well, you can find `libtrtmoelayer.so` in `builddir`. Similar
 When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the following attributes must be specified:
 
 * `expert_count`: INT32, number of experts (sub-layers)
+* `embedding_size`: INT32, the input & output size of expert network
 * `hidden_size`: INT32, the intermediate size of feed forward network (might not be used by sub-layer)
 * `max_concurrency`: INT32, maximal concurrent experts in GPU memory (default to 2), setting it too large will lead to OOM
 * `expert_centroids`: FLOAT32 array, weight for dispatching tokens to experts, must be shape `(d_model, expert_count)` where `d_model` is the last dimension of input tensor (a.k.a. embedding size)
-* `expert_weight_file`: null-terminated char pointer, path to expert weight file, to be read by implmentation of sub-layer
-* `expert_sublayer_type`: type of sub-layer used, currently only `T5_FF` can be used
+* `expert_weight_file`: null-terminated CHAR array, path to expert weight file, to be read by implmentation of sub-layer
+* `expert_sublayer_type`: null-terminated CHAR array, type of sub-layer used, currently only `T5_FF` can be used
+* `moe_variant`: null-terminated CHAR array, variant type of MoE layer, used to decide different behaviours (can be `cpm_2`, `base_layer` or `default`)
+* `layernorm_weight`: FLOAT32 array, weight of layer norm layer applied to input before calculating expert affliation / score, must be provided when `moe_variant` is `cpm_2`
 
 ## Usage
 

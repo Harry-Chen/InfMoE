@@ -21,10 +21,14 @@ class MoELayerConfig:
     sublayer_type: str
     max_batch_size: int
     expert_centroids: np.ndarray
+    layernorm_weight: np.ndarray
     weight_file_path: str
 
     def generate_random_centroids(self) -> None:
         self.expert_centroids = np.random.rand(self.expert_count, self.embedding_size).astype('f')
+
+    def generate_random_layernorm_weight(self) -> None:
+        self.layernorm_weight = np.random.rand(self.embedding_size).astype('f')
 
     def generate_random_weight_file(self, weight_path: str, overwrite: bool):
         # check existence

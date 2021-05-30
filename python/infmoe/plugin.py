@@ -98,7 +98,7 @@ class MoELayerPlugin:
         self.sublayer_type_encoded = self.config.sublayer_type.encode('utf-8')
         self.moe_variant_encoded = self.config.moe_variant.encode('utf-8')
 
-        return trt.PluginFieldCollection([
+        attributes = [
             trt.PluginField("expert_count", np.int32(
                 self.config.expert_count), trt.PluginFieldType.INT32),
             trt.PluginField("embedding_size", np.int32(
@@ -111,4 +111,9 @@ class MoELayerPlugin:
             trt.PluginField("expert_weight_file", self.weight_file_path_encoded, trt.PluginFieldType.UNKNOWN),
             trt.PluginField("expert_sublayer_type", self.sublayer_type_encoded, trt.PluginFieldType.UNKNOWN),
             trt.PluginField("moe_variant", self.moe_variant_encoded, trt.PluginFieldType.UNKNOWN),
-        ])
+        ]
+
+        if self.config.layernorm_weight is not None:
+            attributes.append(trt.PluginField("layernorm_weight", self.config.layernorm_weight, trt.PluginFieldType.FLOAT32))
+
+        return trt.PluginFieldCollection(attributes)

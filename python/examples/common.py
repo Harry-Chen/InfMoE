@@ -11,5 +11,6 @@ def create_moe_config_with_random_weight(filename, *args, **kwargs) -> MoELayerC
     """
     moe_config = MoELayerConfig(*args, **kwargs)
     moe_config.generate_random_centroids()
+    moe_config.generate_random_layernorm_weight()
     moe_config.generate_random_weight_file(filename, False)
     return moe_config

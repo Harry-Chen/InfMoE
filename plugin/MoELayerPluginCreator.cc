@@ -5,9 +5,9 @@
 #include <cstdio>
 #include <cstring>
 
-#include "utility.h"
 #include "MoELayerPlugin.h"
 #include "thirdparty/dbg.h"
+#include "utility.h"
 
 REGISTER_TENSORRT_PLUGIN(MoELayerPluginCreator);
 
@@ -21,10 +21,11 @@ const char *EXPERT_CENTROIDS{"expert_centroids"};
 const char *EXPERT_WEIGHT_FILE{"expert_weight_file"};
 const char *EXPERT_SUBLAYER_TYPE{"expert_sublayer_type"};
 const char *MOE_VARIANT{"moe_variant"};
-}  // namespace
+const char *LAYERNORM_WEIGHT{"layernorm_weight"};
+}  // namespace field_name
 
 // static class member
-const std::array<PluginField, 8> MoELayerPluginCreator::mPluginAttributes{
+const std::array<PluginField, 9> MoELayerPluginCreator::mPluginAttributes{
     // count of experts
     PluginField{field_name::EXPERT_COUNT, nullptr, PluginFieldType::kINT32, 1},
     // embedding size
@@ -41,14 +42,14 @@ const std::array<PluginField, 8> MoELayerPluginCreator::mPluginAttributes{
     PluginField{field_name::EXPERT_SUBLAYER_TYPE, sublayer_type::T5FF, PluginFieldType::kUNKNOWN, 1},
     // type of MoE variant
     PluginField{field_name::MOE_VARIANT, moe_variant::CPM_2, PluginFieldType::kUNKNOWN, 1},
+    // type of MoE variant
+    PluginField{field_name::LAYERNORM_WEIGHT, nullptr, PluginFieldType::kFLOAT32, 1},
 };
 
 const PluginFieldCollection MoELayerPluginCreator::mFC{MoELayerPluginCreator::mPluginAttributes.size(),
                                                        MoELayerPluginCreator::mPluginAttributes.data()};
 
-MoELayerPluginCreator::MoELayerPluginCreator() : mPluginNamespace("") {
-    dbg("initialize MoELayerPluginCreator");
-}
+MoELayerPluginCreator::MoELayerPluginCreator() : mPluginNamespace("") { dbg("initialize MoELayerPluginCreator"); }
 
 MoELayerPluginCreator::~MoELayerPluginCreator() {}
 
@@ -63,10 +64,12 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     int hidden_size = -1;
     int max_concurrency = 2;
     float *expert_centroids = nullptr;
+    float *layernorm_weight = nullptr;
     char *weight_file = nullptr;
     char *sublayer = nullptr;
     char *variant = nullptr;
     int centroid_length;
+    int layernorm_length;
 
     // parse parameters from fc
     for (int i = 0; i < fc->nbFields; ++i) {
@@ -87,21 +90,24 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
         } else if (strcmp(name, field_name::EXPERT_CENTROIDS) == 0) {
             assert(field.length > 0 && field.data != nullptr);
             centroid_length = field.length;
-            auto centroids = new float[field.length];
-            memcpy(centroids, field.data, field.length * sizeof(float));
-            // showArray(static_cast<const float*>(centroids), expert_count, field.length / expert_count);
-            expert_centroids = centroids;
+            expert_centroids = new float[field.length];
+            memcpy(expert_centroids, field.data, field.length * sizeof(float));
         } else if (strcmp(name, field_name::EXPERT_WEIGHT_FILE) == 0) {
             assert(field.length > 0 && field.data != nullptr);
             weight_file = strdup(static_cast<const char *>(field.data));
         } else if (strcmp(name, field_name::EXPERT_SUBLAYER_TYPE) == 0) {
-            dbg(static_cast<const char*>(field.data));
+            dbg(static_cast<const char *>(field.data));
             assert(field.length > 0 && field.data != nullptr);
             sublayer = strdup(static_cast<const char *>(field.data));
-        }  else if (strcmp(name, field_name::MOE_VARIANT) == 0) {
-            dbg(static_cast<const char*>(field.data));
+        } else if (strcmp(name, field_name::MOE_VARIANT) == 0) {
+            dbg(static_cast<const char *>(field.data));
             assert(field.length > 0 && field.data != nullptr);
             variant = strdup(static_cast<const char *>(field.data));
+        } else if (strcmp(name, field_name::LAYERNORM_WEIGHT) == 0) {
+            assert(field.length > 0 && field.data != nullptr);
+            layernorm_length = field.length;
+            layernorm_weight = new float[field.length];
+            memcpy(layernorm_weight, field.data, field.length * sizeof(float));
         } else {
             fprintf(stderr, "unknown field name in PluginFieldCollection: %s\n", name);
             assert(false);
@@ -117,8 +123,11 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     assert(expert_centroids != nullptr);
     assert(sublayer != nullptr);
     assert(variant != nullptr);
+    if (layernorm_weight != nullptr) {
+        assert(layernorm_length == embedding_size);
+    }
 
-    dbg(variant, expert_count, embedding_size, hidden_size, max_concurrency, sublayer, weight_file);
+    dbg(variant, expert_count, embedding_size, hidden_size, layernorm_weight, max_concurrency, sublayer, weight_file);
 
     struct stat64 weight_stat {};
     if (stat64(weight_file, &weight_stat) != 0) {
@@ -131,7 +140,8 @@ IPluginV2 *MoELayerPluginCreator::createPlugin(const char *name, const PluginFie
     }
 
     auto flags = MoELayerPlugin::parseFlags(variant);
-    auto plugin = new MoELayerPlugin(name, expert_count, embedding_size, hidden_size, max_concurrency, expert_centroids, weight_file, sublayer, flags);
+    auto plugin = new MoELayerPlugin(name, expert_count, embedding_size, hidden_size, max_concurrency, expert_centroids,
+                                     layernorm_weight, weight_file, sublayer, flags);
     plugin->setPluginNamespace(mPluginNamespace);
 
     return plugin;

@@ -11,12 +11,18 @@
 #include "utility.h"
 
 
-void MoELayerPlugin::ensureGPUCentroids() {
+void MoELayerPlugin::ensureGPUWeights() {
     if (mCentroidsGpu != nullptr) return;
-    dbg("first time copy centroids to GPU");
+    dbg("first time copy weights to GPU");
     auto size = centroidsSize() * sizeof(float);
     CUDA_SAFE_CALL(cudaMalloc(&mCentroidsGpu, size));
     CUDA_SAFE_CALL(cudaMemcpy(mCentroidsGpu, mCentroidsCpu, size, cudaMemcpyHostToDevice));
+    if (mLayernormCpu != nullptr) {
+        dbg("copy layer norm weights additionally");
+        auto size = mEmbeddingSize * sizeof(float);
+        CUDA_SAFE_CALL(cudaMalloc(&mLayernormGpu, size));
+        CUDA_SAFE_CALL(cudaMemcpy(mLayernormGpu, mLayernormCpu, size, cudaMemcpyHostToDevice));
+    }
 }
 
 void MoELayerPlugin::createSublayer() {
@@ -24,11 +30,12 @@ void MoELayerPlugin::createSublayer() {
     assert(mSublayer.get() == nullptr);
     // initialize sublayer according to parameter
     if (strcmp(mSublayerType, sublayer_type::T5FF) == 0) {
-        mSublayer = std::make_shared<T5FFLayer>(mExpertCount, mEmbeddingSize, mHiddenSize, mExpertWeightFile, mMaxConcurrency);
+        mSublayer =
+            std::make_shared<T5FFLayer>(mExpertCount, mEmbeddingSize, mHiddenSize, mExpertWeightFile, mMaxConcurrency);
     } else if (strcmp(mSublayerType, sublayer_type::Identity) == 0) {
         mSublayer = std::make_shared<IdentityLayer>();
     } else {
-        fprintf(stderr, "unsupported sublayer type: %s\n", mSublayerType);
+        fprintf(stderr, "ERROR: unsupported sublayer type: %s\n", mSublayerType);
         assert(false);
     }
 }
@@ -44,32 +51,39 @@ MoEFlags MoELayerPlugin::parseFlags(const char* moeVariant) {
     } else if (strcmp(moeVariant, moe_variant::DEFAULT) == 0) {
         // do nothing
     } else {
-        fprintf(stderr, "unsupported moe variant: %s\n", moeVariant);
+        fprintf(stderr, "ERROR: unsupported moe variant: %s\n", moeVariant);
         assert(false);
     }
     return flags;
 }
 
-MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int embeddingSize, int hiddenSize, int maxConcurrency,
-                            float *cpuCentroids, const char* expertWeightFile, const char* sublayerType, const MoEFlags flags)
+MoELayerPlugin::MoELayerPlugin(const char* layerName, int expertCount, int embeddingSize, int hiddenSize,
+                               int maxConcurrency, float* centroidsCpu, float* layernormCpu,
+                               const char* expertWeightFile, const char* sublayerType, const MoEFlags flags)
     : mLayerName(strdup(layerName)),
       mExpertCount(expertCount),
       mEmbeddingSize(embeddingSize),
       mHiddenSize(hiddenSize),
       mMaxConcurrency(maxConcurrency),
-      mCentroidsCpu(cpuCentroids),
+      mCentroidsCpu(centroidsCpu),
+      mLayernormCpu(layernormCpu),
       mExpertWeightFile(expertWeightFile),
       mSublayerType(strdup(sublayerType)),
       mFlags(flags) {
     dbg(this, "MoELayerPlugin main constructor");
     // check parameters
     assert(mCentroidsCpu != nullptr);
+    if (mFlags.layernormOnInputBeforeScore && layernormCpu == nullptr) {
+        fprintf(stderr, "ERROR: might provide layer norm weight if layernormOnInputBeforeScore is set\n");
+        assert(false);
+    }
     createSublayer();
 }
 
 MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
     : MoELayerPlugin(strdup(src.mLayerName), src.mExpertCount, src.mEmbeddingSize, src.mHiddenSize, src.mMaxConcurrency,
-                     src.mCentroidsCpu, strdup(src.mExpertWeightFile), strdup(src.mSublayerType), src.mFlags) {
+                     src.mCentroidsCpu, src.mLayernormCpu, strdup(src.mExpertWeightFile), strdup(src.mSublayerType),
+                     src.mFlags) {
     dbg(this, "MoELayerPlugin copy constructor");
     dbg(centroidsSize(), src.mExpertCount, src.mEmbeddingSize);
     // WORKAROUND
@@ -78,6 +92,11 @@ MoELayerPlugin::MoELayerPlugin(const MoELayerPlugin& src)
     size_t size = centroidsSize();
     mCentroidsCpu = new float[size];
     memcpy(mCentroidsCpu, src.mCentroidsCpu, size * sizeof(float));
+    // copy layer norm
+    if (src.mLayernormCpu != nullptr) {
+        mLayernormCpu = new float[mEmbeddingSize];
+        memcpy(mLayernormCpu, src.mLayernormCpu, mEmbeddingSize * sizeof(float));
+    }
     this->mSublayer = src.mSublayer;
     // createSublayer();
 }
@@ -109,11 +128,17 @@ MoELayerPlugin::MoELayerPlugin(const char* layerName, const void* serialData, si
         char_buffer += 8 - (string_size % 8);
     }
     // initialize centroids (int64_t)
-    auto int64_buffer = reinterpret_cast<const int64_t*>(char_buffer);
+    auto float_buffer = reinterpret_cast<const int64_t*>(char_buffer);
     auto size = centroidsSize();
-    assert(size * sizeof(float) == serialLength - METADATA_LENGTH);
+    // assert(size * sizeof(float) == serialLength - METADATA_LENGTH);
     mCentroidsCpu = new float[size];
-    memcpy(mCentroidsCpu, int64_buffer, size * sizeof(float));
+    memcpy(mCentroidsCpu, float_buffer, size * sizeof(float));
+    float_buffer += size;
+    // initialize layer norm
+    if (mFlags.layernormOnInputBeforeScore) {
+        mLayernormCpu = new float[mEmbeddingSize];
+        memcpy(mLayernormCpu, float_buffer, size * sizeof(float));
+    }
     createSublayer();
 }
 
@@ -186,6 +211,15 @@ void MoELayerPlugin::terminate() noexcept {
         CUDA_SAFE_CALL(cudaFree(mCentroidsGpu));
         mCentroidsGpu = nullptr;
     }
+    // free layer norm
+    if (mLayernormCpu != nullptr) {
+        delete[] mLayernormCpu;
+        mLayernormCpu = nullptr;
+    }
+    if (mLayernormGpu != nullptr) {
+        CUDA_SAFE_CALL(cudaFree(mLayernormGpu));
+        mLayernormGpu = nullptr;
+    }
     // destroy cublas handle
     if (mCublasHandle != nullptr) {
         CUBLAS_SAFE_CALL(cublasDestroy_v2(mCublasHandle));
@@ -239,7 +273,7 @@ size_t MoELayerPlugin::getWorkspaceSize(const PluginTensorDesc* inputs, int32_t 
 }
 
 namespace {
-    static cudaDeviceProp DEVICE_PROP = cudaDevicePropDontCare;
+static cudaDeviceProp DEVICE_PROP = cudaDevicePropDontCare;
 }
 
 int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unused]] const PluginTensorDesc* outputDesc,
@@ -250,7 +284,7 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
     // 0. obtain all buffers
     dbg(this);
     ensureCUDAContext();
-    ensureGPUCentroids();
+    ensureGPUWeights();
     auto batch_size = inputDesc[0].dims.d[0];
     auto token_num = batch_size * mSequenceLength;
     auto token_len = mEmbeddingSize;
@@ -258,6 +292,7 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
     // dbg(token_num, token_len);
     auto d_layer_input = static_cast<const float*>(inputs[0]);
     auto d_expert_centroids = static_cast<const float*>(mCentroidsGpu);
+    auto d_layer_norm_weights = static_cast<const float*>(mLayernormGpu);
     auto moe_buffer =
         reinterpret_cast<float*>(static_cast<char*>(workspace) + mSublayerWorkspacecSize * mMaxConcurrency);
     auto d_token_expert_aff = moe_buffer;
@@ -274,31 +309,30 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
     CHECK_CUDA_POINTER(d_post_expert_features);
     CHECK_CUDA_POINTER(d_routed_features);
 
-    const float *d_affiliation_input = d_layer_input;
+    const float* d_affiliation_input = d_layer_input;
 
     // 0. pre-process input if needed
-    // if (mFlags.layernormOnInputBeforeScore) {
-    //     dbg("run layernorm on input");
-    //     float *layernorm_weight = nullptr;
-    //     if (DEVICE_PROP.major == -1) {
-    //         CUDA_SAFE_CALL(cudaGetDeviceProperties(&DEVICE_PROP, 0));
-    //         assert(DEVICE_PROP.major >= 6); // we don't want too old devices
-    //     }
-    //     dbg(DEVICE_PROP.maxGridSize);
-    //     // temporarily use d_routed_features to store input after layernorm
-    //     unimplemented("where to find weights?");
-    //     layernorm_gpu<float, float>(d_routed_features, d_layer_input, token_num, mEmbeddingSize, (double)1e-6,
-    //                             layernorm_weight, nullptr, DEVICE_PROP.maxGridSize[1], stream);
-    //     d_affiliation_input = d_routed_features;
-    // }
+    if (mFlags.layernormOnInputBeforeScore) {
+        dbg("run layernorm on input");
+        CHECK_CUDA_POINTER(d_layer_norm_weights);
+        if (DEVICE_PROP.major == -1) {
+            CUDA_SAFE_CALL(cudaGetDeviceProperties(&DEVICE_PROP, 0));
+            assert(DEVICE_PROP.major >= 6);  // we don't want too old devices
+        }
+        dbg(DEVICE_PROP.maxGridSize);
+        // temporarily use d_routed_features to store input after layernorm
+        layernorm_gpu<float, float>(d_routed_features, d_layer_input, token_num, mEmbeddingSize, (double)1e-6,
+                                    d_layer_norm_weights, nullptr, DEVICE_PROP.maxGridSize[1], stream);
+        d_affiliation_input = d_routed_features;
+    }
 
     // 1. calculate token-expert affiliation
     // (token_num, token_len) @ (token_len, expert_count)
     float alpha = 1.0, beta = 0.0;
     CUBLAS_SAFE_CALL(cublasSetStream_v2(mCublasHandle, stream));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mExpertCount, token_num, token_len, &alpha,
-                                    d_expert_centroids, token_len, d_affiliation_input, token_len, &beta, d_token_expert_aff,
-                                    mExpertCount));
+                                    d_expert_centroids, token_len, d_affiliation_input, token_len, &beta,
+                                    d_token_expert_aff, mExpertCount));
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
     // dbg("after affiliation");
@@ -381,8 +415,10 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
 }
 
 size_t MoELayerPlugin::getSerializationSize() const noexcept {
-    return METADATA_LENGTH + centroidsSize() * sizeof(float) + strlen(mExpertWeightFile) +
-           strlen(mSublayerType);
+    auto total_size =
+        METADATA_LENGTH + strlen(mExpertWeightFile) + strlen(mSublayerType) + centroidsSize() * sizeof(float);
+    if (mLayernormCpu != nullptr) total_size += sizeof(float) * mEmbeddingSize;
+    return total_size;
 }
 
 void MoELayerPlugin::serialize(void* buffer) const noexcept {
@@ -410,10 +446,14 @@ void MoELayerPlugin::serialize(void* buffer) const noexcept {
     if (string_size % 8 != 0) {
         char_buffer += 8 - (string_size % 8);
     }
-    // int64_t
-    auto int64_buffer = reinterpret_cast<int64_t*>(char_buffer);
-    *int64_buffer++ = centroidsSize();
-    memcpy(int64_buffer, mCentroidsCpu, centroidsSize() * sizeof(float));
+    // centroids
+    auto float_buffer = reinterpret_cast<int64_t*>(char_buffer);
+    memcpy(float_buffer, mCentroidsCpu, centroidsSize() * sizeof(float));
+    float_buffer += centroidsSize();
+    // layer norm
+    if (mLayernormCpu != nullptr) {
+        memcpy(float_buffer, mLayernormCpu, mEmbeddingSize * sizeof(float));
+    }
 }
 
 void MoELayerPlugin::destroy() noexcept {
