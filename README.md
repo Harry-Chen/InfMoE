@@ -74,7 +74,7 @@ When initializing `MoELayerPlugin` in TensorRT (either C++ or Python), the follo
 
 ## Usage
 
-The plugin can only handle MoE layers. To run inference with a full network, you should slice it before and after any MoE layer:
+Currently InfMoE can only handle MoE layers with FP32 parameters, input & output. To run inference with a full network, you should slice it before and after any MoE layer:
 
 * For non-MoE layers, jsut save them as `onnx` / UFF format and use TensorRT to parse it into a network ([Python](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#import_onnx_python) / [C++](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#import_onnx_c)). Or you can use TensorRT API to construct the network manually ([Python](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#network_python) / [C++](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#create_network_c)).
 * For MoE layers, dump expert centroids and weights of each expert separately (in the format mentioned below), create a layer using `MoELayerPlugin` with Python or C++ (see examples).
@@ -82,6 +82,16 @@ The plugin can only handle MoE layers. To run inference with a full network, you
 Then you can concatenate MoE / non-MoE layers to obtain the full network (or replace any specific 'placeholder' layer with MoE layer), which can be later built into a TensorRT CUDA engine and used to run inference with / serialize & dump to file.
 
 We provide several Python examples in `python/examples` showing how to do the aforementioned work. You can run them after installing this plugin. You are encouraged to read [TensorRT documentation](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html) to understand its workflow prior to using this plugin.
+
+## Error handling
+
+InfMoE requires that none of the following tensors contains `NaN` values:
+
+* layer input
+* expert centroids
+* weight of layer norm (if applicable)
+
+It will also check the shape and data type of all parameters, input & output tensors. If any misconfiguration is found, it will print error message to `stderr` and abort the whole process.
 
 ## Scheduling
 

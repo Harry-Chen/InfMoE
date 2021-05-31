@@ -67,8 +67,11 @@ __global__ void expert_select_top1_kernel(
             }
         }
         // printf("setting selection[%d] = %d (%f)\n", row_id, row_max_pos, row_max);
+        assert(row_max_pos != -1);
         gate_selection[row_id] = row_max_pos;
-        if (expert_weight != nullptr) expert_weight[row_id] = row_max;
+        if (expert_weight != nullptr) {
+            expert_weight[row_id] = row_max;
+        }
     }
 }
 
@@ -174,7 +177,11 @@ void moe_expert_count(
 
     // dbg("before sort");
     // run counting sorting on CPU
+    // dbg("gate_selection");
+    // showArray(gate_selection, 1, token_num);
+    // showCudaArray(d_gate_selection, 1, token_num);
     for (int i = 0; i < token_num; ++i) {
+        assert(gate_selection[i] != -1);
         expert_count[gate_selection[i]]++;
     }
     expert_offset[0] = 0;
@@ -198,8 +205,8 @@ void moe_expert_count(
 
     // copy back to GPU
     CUDA_SAFE_CALL(cudaMemcpyAsync(d_token_pos, token_pos, token_num * sizeof(int), cudaMemcpyHostToDevice, stream));
+    delete[] expert_pos; // FIXME: potential memory corruption
     delete[] gate_selection;
-    // delete[] expert_pos; // FIXME: potential memory corruption
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
     delete[] token_pos;
 }

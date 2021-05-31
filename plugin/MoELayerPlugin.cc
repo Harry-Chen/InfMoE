@@ -328,6 +328,7 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
 
     // 1. calculate token-expert affiliation
     // (token_num, token_len) @ (token_len, expert_count)
+    // showCudaArray(d_affiliation_input, token_num, token_len);
     float alpha = 1.0, beta = 0.0;
     CUBLAS_SAFE_CALL(cublasSetStream_v2(mCublasHandle, stream));
     CUBLAS_SAFE_CALL(cublasSgemm_v2(mCublasHandle, CUBLAS_OP_T, CUBLAS_OP_N, mExpertCount, token_num, token_len, &alpha,
@@ -336,10 +337,9 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
     // dbg("after affiliation");
-    // showCudaArray(d_layer_input, token_num, token_len);
+    // showCudaArray(d_token_expert_aff, token_num, mExpertCount);
     // showArray(static_cast<const float*>(mExpertCentroidsCPU.values), mExpertCount, token_len);
     // showCudaArray(d_expert_centroids, mExpertCount, token_len);
-    // showCudaArray(d_token_expert_aff, token_num, mExpertCount);
 
     // 2. get expert assignments (TODO: support multiple experts for each token)
     moe_expert_select(token_num, mExpertCount, d_token_expert_aff, d_gate_selection, d_mix_coeff, stream);
@@ -367,6 +367,7 @@ int32_t MoELayerPlugin::enqueue(const PluginTensorDesc* inputDesc, [[maybe_unuse
 
     CUDA_SAFE_CALL(cudaStreamSynchronize(stream));
 
+    // TODO: port dynamic scheduling code to public source
     // i: expert index, j: expert (with non-empty features) index
     for (int i = next_expert, j = 0; i < mExpertCount; i = next_expert, j++) {
         auto current_token_offset = expert_offset[i];

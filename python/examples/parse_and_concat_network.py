@@ -33,6 +33,7 @@ def parse_oonx_network(network, filename):
 
 
 def create_moe_plugin() -> MoELayerPlugin:
+    # WARNING: random weights might cause NaN values in MoE layer input, leading to assertion error
     moe_config = create_moe_config_with_random_weight('/tmp/moe_weight_small.npz',
         seq_len=8, expert_count=2, embedding_size=4, hidden_size=8,
         max_concurrency=2, moe_variant="cpm_2", sublayer_type="T5_FF", max_batch_size=10,
